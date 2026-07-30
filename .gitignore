@@ -1,0 +1,20 @@
+# Customer exports are local test data and must never be committed.
+*.csv
+!tests/fixtures/*.csv
+
+# Local tooling and editor state
+.codex/
+.agents/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Logs, coverage, and temporary output
+*.log
+coverage/
+.nyc_output/
+_site/
+dist/
+tmp/
+temp/
+

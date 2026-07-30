@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BR FieldSort: Run tests",
+      "type": "process",
+      "command": "node",
+      "args": ["--test"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "BR FieldSort: Start local server",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/serve.js"],
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "br-fieldsort",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "BR FieldSort is available",
+          "endsPattern": "Press Ctrl\\+C to stop"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "br-fieldsort",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first BuildingReports CSV cleanup and contextual field parser.",
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "test": "node --test",
+    "check": "node --check parser.js && node --check app.js && node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Clean BuildingReports CSV exports without changing the original Area/Suite value.">
+  <title>BR FieldSort</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="BR FieldSort home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>BR <b>FieldSort</b></span>
+      </a>
+      <div class="privacy-pill">
+        <span class="privacy-dot"></span>
+        Runs locally in your browser
+      </div>
+    </header>
+
+    <main>
+      <section id="importView" class="import-view">
+        <div class="hero-copy">
+          <div class="eyebrow">BUILDINGREPORTS CSV CLEANUP</div>
+          <h1>Put every detail<br><em>in its place.</em></h1>
+          <p>Drop in a BuildingReports export. FieldSort corrects Device Type, separates Floor, Direction, and Location, cleans Description, and keeps the full Area/Suite text exactly as it arrived.</p>
+        </div>
+
+        <div class="drop-card-wrap">
+          <div id="dropZone" class="drop-card" tabindex="0" role="button" aria-label="Choose or drop a CSV file">
+            <input id="fileInput" type="file" accept=".csv,text/csv" hidden>
+            <div class="file-icon" aria-hidden="true">
+              <span>CSV</span>
+            </div>
+            <h2>Drop your export here</h2>
+            <p>or choose a file from your computer</p>
+            <button id="browseBtn" class="button button-primary" type="button">Choose CSV file</button>
+            <small>Nothing is uploaded. Your data stays on this device.</small>
+          </div>
+          <div class="feature-strip">
+            <div>
+              <span class="feature-icon shield-icon" aria-hidden="true">◇</span>
+              <p><strong>Source protected</strong><br>Area/Suite is never changed</p>
+            </div>
+            <div>
+              <span class="feature-icon" aria-hidden="true">◎</span>
+              <p><strong>Context aware</strong><br>Understands field terminology</p>
+            </div>
+            <div>
+              <span class="feature-icon" aria-hidden="true">↗</span>
+              <p><strong>Review first</strong><br>Edit every suggestion</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workspaceView" class="workspace-view" hidden>
+        <div class="workspace-heading">
+          <div>
+            <div class="eyebrow">CLEANUP WORKSPACE</div>
+            <h1>Review the split.</h1>
+            <p id="fileSummary">Your source data is protected.</p>
+          </div>
+          <div class="heading-actions">
+            <button id="newFileBtn" class="button button-quiet" type="button">New file</button>
+            <button id="exportBtn" class="button button-primary export-button" type="button">
+              Export cleaned CSV <span aria-hidden="true">↓</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="stats-grid" aria-label="Import summary">
+          <div class="stat-card">
+            <span class="stat-label">ROWS IMPORTED</span>
+            <strong id="rowCount">0</strong>
+            <small id="columnCount">0 columns detected</small>
+          </div>
+          <div class="stat-card stat-ready">
+            <span class="stat-label">READY</span>
+            <strong id="readyCount">0</strong>
+            <small>High-confidence splits</small>
+          </div>
+          <div class="stat-card stat-review">
+            <span class="stat-label">NEEDS REVIEW</span>
+            <strong id="reviewCount">0</strong>
+            <small>Worth a quick look</small>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">MANUAL EDITS</span>
+            <strong id="editCount">0</strong>
+            <small id="learnedCount">0 learned corrections</small>
+          </div>
+        </div>
+
+        <div class="assurance-bar">
+          <span class="lock-badge" aria-hidden="true">✓</span>
+          <p><strong>Area/Suite lock is on.</strong> The original value is carried into the export character-for-character for every row.</p>
+          <button id="showOptionsBtn" type="button">Cleanup options</button>
+        </div>
+
+        <div id="optionsPanel" class="options-panel" hidden>
+          <div>
+            <label for="fillMode">How should existing target values be handled?</label>
+            <select id="fillMode">
+              <option value="smart">Clean blanks + preserve existing values (recommended)</option>
+              <option value="empty">Only explicit text (no context suggestions)</option>
+              <option value="replace">Replace all three target columns</option>
+            </select>
+            <small>Smart mode corrects strongly identified Device Types, removes company prefixes from Description, and follows patterns learned from the completed examples. Area/Suite remains locked.</small>
+          </div>
+          <div class="option-check">
+            <label>
+              <input id="learnToggle" type="checkbox" checked>
+              <span>Remember my manual corrections on this device</span>
+            </label>
+            <button id="clearLearningBtn" class="text-button" type="button">Clear learned corrections</button>
+          </div>
+        </div>
+
+        <div class="review-panel">
+          <div class="review-toolbar">
+            <div class="filter-group" role="group" aria-label="Filter rows">
+              <button class="filter-button is-active" data-filter="all" type="button">All <span id="allFilterCount">0</span></button>
+              <button class="filter-button" data-filter="review" type="button">Needs review <span id="reviewFilterCount">0</span></button>
+              <button class="filter-button" data-filter="edited" type="button">Edited <span id="editedFilterCount">0</span></button>
+            </div>
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="searchInput" type="search" placeholder="Search rows">
+            </label>
+          </div>
+
+          <div class="sheet-toolbar">
+            <div class="selection-summary">
+              <strong id="selectionCount">0 rows selected</strong>
+              <button id="clearSelectionBtn" class="text-button" type="button">Clear</button>
+            </div>
+            <div class="bulk-controls">
+              <label>
+                <span>Column</span>
+                <select id="bulkColumn" aria-label="Bulk edit column"></select>
+              </label>
+              <label class="bulk-value-label">
+                <span>Value</span>
+                <input id="bulkValue" type="text" placeholder="Enter a value">
+              </label>
+              <label>
+                <span>Action</span>
+                <select id="bulkMode" aria-label="Bulk edit action">
+                  <option value="replace">Replace selected</option>
+                  <option value="empty">Fill blanks only</option>
+                </select>
+              </label>
+              <button id="applyBulkBtn" class="button button-sheet" type="button">Apply</button>
+              <button id="resetSelectedBtn" class="button button-quiet button-sheet" type="button">Reset rows</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table id="csvGrid" class="csv-grid">
+              <thead id="gridHead"></thead>
+              <tbody id="reviewBody"></tbody>
+            </table>
+            <div id="emptyResults" class="empty-results" hidden>
+              <strong>No matching rows</strong>
+              <span>Try a different filter or search.</span>
+            </div>
+          </div>
+          <div class="table-footer">
+            <span id="visibleSummary">Showing 0 rows</span>
+            <p><span class="keyboard-key">Tab</span> moves across cells · paste tab-separated cells directly from Excel · AreaSuite stays locked</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>BR FieldSort</span>
+      <p>Purpose-built for BuildingReports imports.</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="parser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+"ScanNumber","DeviceType","Manufacturer","ModelNumber","SerialNumber","Floor","Direction","Location","Description","AreaSuite","ControlPanel","Zone","Address","ManufactureDate","InstallDate","Type","Note"
+"1000000001","Initiating Device","Example","M1","","","","","EXAMPLE COMPANY\SECURITY OFFICE","PULL 2ND FLOOR NORTH LOBBY EXIT","1","","001:001:0001","","","",""
+"1000000002","Initiating Device","Example","M2","","","","","EXAMPLE COMPANY\MECHANICAL ROOM","DUCT SMOKE ROOF AHU-1 SOUTHWEST SUPPLY","1","","001:001:0002","","","",""
+"1000000003","Initiating Device","Example","M3","","","","","EXAMPLE COMPANY\GUEST AREA","5TH FLOOR SMOKE CORRIDOR BY ROOM 518","1","","001:001:0003","","","",""
