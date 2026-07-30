@@ -25,7 +25,7 @@
         <div class="hero-copy">
           <div class="eyebrow">BUILDINGREPORTS CSV CLEANUP</div>
           <h1>Put every detail<br><em>in its place.</em></h1>
-          <p>Drop in a BuildingReports export. FieldSort corrects Device Type, separates Floor, Direction, and Location, cleans Description, and keeps the full Area/Suite text exactly as it arrived.</p>
+          <p>Drop in a BuildingReports export. FieldSort corrects Device Type and Model Number, separates Floor, Direction, and Location, cleans Description, and keeps the full Area/Suite text exactly as it arrived.</p>
         </div>
 
         <div class="drop-card-wrap">
@@ -104,11 +104,11 @@
           <div>
             <label for="fillMode">How should existing target values be handled?</label>
             <select id="fillMode">
-              <option value="smart">Clean blanks + preserve existing values (recommended)</option>
+              <option value="smart">Clean with context + preserve trusted values (recommended)</option>
               <option value="empty">Only explicit text (no context suggestions)</option>
-              <option value="replace">Replace all three target columns</option>
+              <option value="replace">Replace all cleanup target columns</option>
             </select>
-            <small>Smart mode corrects strongly identified Device Types, removes company prefixes from Description, and follows patterns learned from the completed examples. Area/Suite remains locked.</small>
+            <small>Smart mode corrects strongly identified Device Types, matches Model Numbers from correct rows in the file, removes company prefixes from Description, and follows learned patterns. Area/Suite remains locked.</small>
           </div>
           <div class="option-check">
             <label>
@@ -126,10 +126,18 @@
               <button class="filter-button" data-filter="review" type="button">Needs review <span id="reviewFilterCount">0</span></button>
               <button class="filter-button" data-filter="edited" type="button">Edited <span id="editedFilterCount">0</span></button>
             </div>
-            <label class="search-box">
-              <span aria-hidden="true">⌕</span>
-              <input id="searchInput" type="search" placeholder="Search rows">
-            </label>
+            <div class="review-actions">
+              <button id="compactEmptyBtn" class="compact-columns-button" type="button" aria-pressed="true">
+                Expand empty columns
+              </button>
+              <button id="resetWidthsBtn" class="compact-columns-button" type="button" disabled>
+                Reset widths
+              </button>
+              <label class="search-box">
+                <span aria-hidden="true">⌕</span>
+                <input id="searchInput" type="search" placeholder="Search rows">
+              </label>
+            </div>
           </div>
 
           <div class="sheet-toolbar">
@@ -170,7 +178,7 @@
           </div>
           <div class="table-footer">
             <span id="visibleSummary">Showing 0 rows</span>
-            <p><span class="keyboard-key">Tab</span> moves across cells · paste tab-separated cells directly from Excel · AreaSuite stays locked</p>
+            <p><span class="keyboard-key">Tab</span> moves across cells · drag header edges to resize · double-click to auto-fit · AreaSuite stays locked</p>
           </div>
         </div>
       </section>

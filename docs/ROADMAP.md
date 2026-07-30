@@ -8,6 +8,7 @@ This is a guide, not a commitment. Prefer changes backed by completed reference 
 - User-defined parsing rules with preview and rollback.
 - Import profiles for recurring customers or building naming conventions.
 - Column-level validation rules before export.
+- A visible explanation popover for ModelNumber evidence and conflicts.
 - Duplicate and near-duplicate detection.
 - A comparison pane showing original source beside all inferred targets.
 - Exportable/importable learned rules instead of browser-only localStorage.
@@ -28,4 +29,3 @@ This is a guide, not a commitment. Prefer changes backed by completed reference 
 ## Before adding remote AI
 
 Remote inference would change the privacy model. It requires explicit user approval, a clear data-retention policy, authentication, error handling, offline fallback, and updates to `SECURITY.md`.
-

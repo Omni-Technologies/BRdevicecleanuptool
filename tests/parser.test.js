@@ -42,6 +42,52 @@ test("corrects DeviceType from strong source terminology", () => {
   assert.equal(Parser.inferDeviceType("WATERFLOW BLDG 14", "Initiating Device"), "Waterflow Switch");
 });
 
+test("maps Pull Station to its known ModelNumber when the file has no stronger evidence", () => {
+  const result = Parser.inferModelNumber("Pull Station", "Example", []);
+  assert.equal(result.value, "SIGA-278");
+  assert.equal(result.source, "known device mapping");
+});
+
+test("learns ModelNumber from correct matching DeviceType rows", () => {
+  const records = [
+    {
+      deviceType: "Pull Station",
+      manufacturer: "Example",
+      original: { deviceType: "Pull Station", modelNumber: "SITE-PULL-1", manufacturer: "Example" },
+      inferred: { deviceType: "Pull Station", reasons: [] }
+    },
+    {
+      deviceType: "Pull Station",
+      manufacturer: "Example",
+      original: { deviceType: "Initiating Device", modelNumber: "", manufacturer: "Example" },
+      inferred: { deviceType: "Pull Station", reasons: [] }
+    }
+  ];
+
+  Parser.applyModelContext(records);
+  assert.equal(records[1].inferred.modelNumber, "SITE-PULL-1");
+  assert.equal(records[1].inferred.modelNumberSource, "manufacturer-device context");
+});
+
+test("does not use a generic ModelNumber when correct rows conflict", () => {
+  const records = [
+    {
+      deviceType: "Pull Station",
+      original: { deviceType: "Pull Station", modelNumber: "MODEL-A" },
+      inferred: { deviceType: "Pull Station", reasons: [] }
+    },
+    {
+      deviceType: "Pull Station",
+      original: { deviceType: "Pull Station", modelNumber: "MODEL-B" },
+      inferred: { deviceType: "Pull Station", reasons: [] }
+    }
+  ];
+
+  const result = Parser.inferModelNumber("Pull Station", "", records);
+  assert.equal(result.value, "");
+  assert.equal(result.source, "conflicting context");
+});
+
 test("removes a company prefix from Description and normalizes the remainder", () => {
   assert.equal(Parser.cleanDescription("EXAMPLE COMPANY\\MAINTENANCE OFFICE"), "Maintenance Office");
   assert.equal(Parser.cleanDescription("EXAMPLE COMPANY\\SECURITY OFFICE"), "Security Office");

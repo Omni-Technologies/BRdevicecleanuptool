@@ -44,6 +44,7 @@ Responsibilities:
 - Text normalization and spelling cleanup.
 - Floor and Direction extraction.
 - DeviceType classification.
+- ModelNumber inference from trustworthy same-file DeviceType/manufacturer evidence.
 - Area/Location splitting.
 - Description prefix cleanup.
 - Per-row confidence metadata.
@@ -111,8 +112,17 @@ It can:
 
 - Learn a floor associated with an explicit room number elsewhere in the file.
 - Borrow a floor from a strongly matching row of the same DeviceType.
+- Match ModelNumber from rows whose original DeviceType is already correct, preferring the same manufacturer.
 
 Context results are medium confidence. Conflicting room/floor evidence is rejected.
+
+ModelNumber evidence is resolved independently. One unambiguous model is accepted; competing models require an 80% dominant result with at least two supporting rows. Conflicting results are left unchanged. `Pull Station → SIGA-278` is the only built-in fallback and is used only when the file contains no conflicting or stronger model evidence.
+
+## Grid width behavior
+
+Columns E and N–Q are compacted to a narrow Excel-style width only when every effective cell in that column is blank. The toolbar can expand them, and adding a value restores normal width automatically. This is visual only; no column is removed or reordered.
+
+Every CSV column also has an accessible resize separator in its header. Dragging changes a CSS width variable stored in `state.columnWidths`; double-click or Enter auto-fits, arrow keys adjust the width, Home resets one column, and the toolbar resets all columns. Manual widths last for the current imported file and are cleared when a new file is loaded. Width state is never read by `exportCsv()`.
 
 ## Export safety
 
@@ -133,4 +143,3 @@ GitHub Pages serves relative assets from a project subpath. `.github/workflows/p
 4. Deploys through the `github-pages` environment.
 
 There is no production build transformation.
-

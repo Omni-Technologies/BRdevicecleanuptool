@@ -76,6 +76,8 @@ The Pages workflow intentionally copies an allowlist into `_site`. Do not replac
 ## UI expectations
 
 - The grid should resemble a CSV opened in Excel: original column order, column letters, row numbers, compact cells, horizontal scroll, and direct editing.
+- Empty utility columns E and N–Q may compact visually, but must remain present, editable, and export in their original positions.
+- User-resized column widths are UI-only state. They must never alter CSV values, headers, column order, or export behavior.
 - AreaSuite must remain visibly locked.
 - Suggested, modified, and review states must remain distinguishable.
 - Keyboard and paste workflows are first-class.
@@ -90,4 +92,3 @@ The Pages workflow intentionally copies an allowlist into `_site`. Do not replac
 - Documentation reflects new rules or architecture.
 - The landing page and workspace both render.
 - Relative URLs work from a project subpath.
-

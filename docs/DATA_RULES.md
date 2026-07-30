@@ -31,6 +31,18 @@ Specific patterns run before broad ones:
 
 This order ensures `DUCT SMOKE` becomes Duct Detector, not Smoke Detector. Avoid adding ambiguous mappings such as Relay or Tamper without representative completed exports.
 
+## ModelNumber inference
+
+ModelNumber is kept in sync when DeviceType is corrected:
+
+1. Use a clear model from rows with the same manufacturer and an already-correct original DeviceType.
+2. Otherwise use a clear file-wide model for that DeviceType.
+3. If the file has no model evidence, `Pull Station` falls back to `SIGA-278`.
+
+A single unique model is accepted. If multiple models exist, the leading model needs at least two rows, at least 80% of the evidence, and no tie. Conflicting model families are not guessed, and a conflicting in-file result suppresses the generic Pull Station fallback.
+
+Smart mode replaces ModelNumber when DeviceType changes and a reliable model suggestion exists. It fills a blank ModelNumber for an already-correct DeviceType. Explicit-only mode preserves the original ModelNumber. Replace mode prefers the inferred model.
+
 ## Floor extraction
 
 Supported examples:
@@ -106,4 +118,3 @@ A row needs review when useful source exists and:
 - A recognizable floor cue remains unresolved.
 
 A blank field is not automatically an error. Some source descriptions genuinely omit a floor or direction.
-

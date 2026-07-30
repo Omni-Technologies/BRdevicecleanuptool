@@ -8,6 +8,7 @@ The application is a static website with no backend, account, database, build st
 
 - Preserves every original CSV row, column, and `AreaSuite` value.
 - Corrects strongly identified Device Types, including Pull Station, Duct Detector, Smoke Detector, Heat Detector, Waterflow Switch, and Power Supply.
+- Keeps ModelNumber aligned with DeviceType by learning from correct rows in the same file; Pull Station falls back to `SIGA-278` when no stronger file evidence exists.
 - Extracts numbered floors, Lower Level, Penthouse, Mezzanine, Roof, Basement, Ground Floor, and parking levels.
 - Extracts full and abbreviated compass directions.
 - Separates broad areas from precise locations when the pattern is clear.
@@ -16,6 +17,8 @@ The application is a static website with no backend, account, database, build st
 - Compares AreaSuite and Description to handle exports that put useful source text in either field.
 - Uses repeated room numbers and highly similar rows for conservative contextual floor suggestions.
 - Supports direct cell editing, Excel range pasting, row selection, and bulk fill/replace.
+- Automatically compacts empty utility columns E and N–Q, with a one-click full-width view.
+- Lets users resize every CSV column, double-click to auto-fit, or reset all widths without changing exported data.
 - Remembers target-field corrections in browser `localStorage`.
 
 ## Privacy
@@ -104,4 +107,3 @@ The following are non-negotiable:
 6. The hosted application remains usable under a GitHub project subpath, so browser assets use relative URLs.
 
 Start future work by reading [AGENTS.md](AGENTS.md).
-

@@ -3,7 +3,10 @@
 
   const Parser = window.BRParser;
   const LEARNING_KEY = "br-fieldsort-corrections-v2";
-  const TARGET_FIELDS = ["deviceType", "floor", "direction", "location", "description"];
+  const TARGET_FIELDS = ["deviceType", "modelNumber", "floor", "direction", "location", "description"];
+  const COMPACT_EMPTY_COLUMN_INDEXES = new Set([4, 13, 14, 15, 16]);
+  const MIN_COLUMN_WIDTH = 48;
+  const MAX_COLUMN_WIDTH = 900;
   const state = {
     file: null,
     headers: [],
@@ -15,6 +18,9 @@
     filter: "all",
     query: "",
     fillMode: "smart",
+    compactEmptyColumns: true,
+    emptyUtilityColumns: new Set(),
+    columnWidths: new Map(),
     learning: loadLearning()
   };
 
@@ -54,10 +60,13 @@
     bulkMode: document.querySelector("#bulkMode"),
     applyBulkBtn: document.querySelector("#applyBulkBtn"),
     resetSelectedBtn: document.querySelector("#resetSelectedBtn"),
+    compactEmptyBtn: document.querySelector("#compactEmptyBtn"),
+    resetWidthsBtn: document.querySelector("#resetWidthsBtn"),
     toast: document.querySelector("#toast")
   };
 
   let toastTimer = null;
+  let activeColumnResize = null;
 
   function loadLearning() {
     try {
@@ -112,7 +121,9 @@
       location: ["Location"],
       description: ["Description"],
       areaSuite: ["AreaSuite", "Area/Suite", "Area Suite"],
-      deviceType: ["DeviceType", "Device Type"]
+      deviceType: ["DeviceType", "Device Type"],
+      modelNumber: ["ModelNumber", "Model Number", "Model"],
+      manufacturer: ["Manufacturer", "Manufacture"]
     };
     const indexes = {};
     for (const [key, names] of Object.entries(aliases)) indexes[key] = Parser.findColumn(headers, names);
@@ -153,9 +164,11 @@
     const current = {};
     for (const field of TARGET_FIELDS) current[field] = normalizeExisting(record.original[field], field);
     const inferred = record.inferred;
+    const deviceTypeChanged = Parser.normalizeHeader(inferred.deviceType) !== Parser.normalizeHeader(current.deviceType);
     if (mode === "empty") {
       return {
         deviceType: current.deviceType,
+        modelNumber: current.modelNumber,
         floor: current.floor || (inferred.floorSource === "context" ? "" : inferred.floor),
         direction: current.direction || inferred.direction,
         location: current.location || inferred.location,
@@ -165,6 +178,7 @@
     if (mode === "replace") {
       return {
         deviceType: inferred.deviceType || current.deviceType,
+        modelNumber: inferred.modelNumber || current.modelNumber,
         floor: inferred.floor || current.floor,
         direction: inferred.direction || current.direction,
         location: inferred.location || current.location,
@@ -173,6 +187,9 @@
     }
     return {
       deviceType: inferred.deviceType || current.deviceType,
+      modelNumber: deviceTypeChanged
+        ? inferred.modelNumber || current.modelNumber
+        : current.modelNumber || inferred.modelNumber,
       floor: current.floor || inferred.floor,
       direction: current.direction || inferred.direction,
       location: current.location || inferred.location,
@@ -184,6 +201,8 @@
     state.records = state.rows.map((row, index) => {
       const areaSuite = row[state.indexes.areaSuite] || "";
       const deviceType = state.indexes.deviceType >= 0 ? row[state.indexes.deviceType] || "" : "";
+      const manufacturer = state.indexes.manufacturer >= 0 ? row[state.indexes.manufacturer] || "" : "";
+      const modelNumber = row[state.indexes.modelNumber] || "";
       const originalDescription = row[state.indexes.description] || "";
       const cleanedDescription = Parser.cleanDescription(originalDescription);
       const areaInference = Parser.inferFields(areaSuite, deviceType);
@@ -206,6 +225,8 @@
       }
       const original = {
         deviceType,
+        modelNumber,
+        manufacturer,
         floor: row[state.indexes.floor] || "",
         direction: row[state.indexes.direction] || "",
         location: row[state.indexes.location] || "",
@@ -215,6 +236,7 @@
       const record = {
         index,
         deviceType: inferred.deviceType || deviceType,
+        manufacturer,
         areaSuite,
         parseSource,
         originalRow: row.slice(),
@@ -226,14 +248,11 @@
         learned: Boolean(learned),
         learningId: learnedId
       };
-      record.values = outputValues(record, state.fillMode);
       return record;
     });
 
     Parser.applyContext(state.records);
-    state.records.forEach((record) => {
-      if (!record.original.floor && state.fillMode !== "empty") record.values.floor = record.inferred.floor;
-    });
+    state.records.forEach((record) => { record.values = outputValues(record, state.fillMode); });
   }
 
   function fieldForColumn(columnIndex) {
@@ -256,6 +275,17 @@
     else record.edits.set(columnIndex, value);
     if (settings.manual) record.manualColumns.add(columnIndex);
     if (settings.propagate && field) updateDuplicateRows(record, field, value);
+    return true;
+  }
+
+  function syncModelForDeviceType(record) {
+    if (record.manualColumns.has(state.indexes.modelNumber)) return false;
+    const suggestion = Parser.inferModelNumber(record.values.deviceType, record.manufacturer, state.records);
+    if (!suggestion.value || record.values.modelNumber === suggestion.value) return false;
+    record.inferred.modelNumber = suggestion.value;
+    record.inferred.modelNumberSource = suggestion.source;
+    record.inferred.modelNumberEvidence = suggestion.evidence;
+    record.values.modelNumber = suggestion.value;
     return true;
   }
 
@@ -288,6 +318,7 @@
       state.filter = "all";
       state.query = "";
       state.selected.clear();
+      state.columnWidths.clear();
       elements.searchInput.value = "";
       document.querySelectorAll(".filter-button").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.filter === "all");
@@ -333,13 +364,164 @@
     });
   }
 
-  function columnWidth(header) {
+  function columnHasInformation(columnIndex) {
+    return state.records.some((record) => String(getCellValue(record, columnIndex)).trim() !== "");
+  }
+
+  function refreshEmptyUtilityColumns() {
+    state.emptyUtilityColumns = new Set(
+      Array.from(COMPACT_EMPTY_COLUMN_INDEXES)
+        .filter((columnIndex) => columnIndex < state.headers.length && !columnHasInformation(columnIndex))
+    );
+  }
+
+  function isCompactEmptyColumn(columnIndex) {
+    return state.compactEmptyColumns
+      && state.emptyUtilityColumns.has(columnIndex)
+      && !state.columnWidths.has(columnIndex);
+  }
+
+  function compactEmptyColumnCount() {
+    if (!state.compactEmptyColumns) return state.emptyUtilityColumns.size;
+    return Array.from(state.emptyUtilityColumns)
+      .filter((columnIndex) => !state.columnWidths.has(columnIndex))
+      .length;
+  }
+
+  function updateColumnWidthControls() {
+    const count = compactEmptyColumnCount();
+    elements.compactEmptyBtn.disabled = count === 0;
+    elements.compactEmptyBtn.setAttribute("aria-pressed", String(state.compactEmptyColumns));
+    elements.compactEmptyBtn.textContent = count === 0
+      ? "No empty utility columns"
+      : state.compactEmptyColumns
+        ? `Expand ${count} empty columns`
+        : `Compact ${count} empty columns`;
+    elements.resetWidthsBtn.disabled = state.columnWidths.size === 0;
+  }
+
+  function automaticColumnWidth(header, columnIndex) {
+    if (isCompactEmptyColumn(columnIndex)) return 54;
     const normalized = Parser.normalizeHeader(header);
     if (normalized === "areasuite") return 330;
     if (["description", "location", "note"].includes(normalized)) return 220;
     if (["direction", "devicetype", "manufacturer", "modelnumber"].includes(normalized)) return 155;
     if (["scannumber", "serialnumber", "controlpanel", "manufacturedate", "installdate"].includes(normalized)) return 145;
     return 112;
+  }
+
+  function columnWidth(header, columnIndex) {
+    return state.columnWidths.get(columnIndex) || automaticColumnWidth(header, columnIndex);
+  }
+
+  function columnWidthVariable(columnIndex) {
+    return `--sheet-column-${columnIndex}-width`;
+  }
+
+  function applyColumnWidthStyle(columnIndex) {
+    if (columnIndex < 0 || columnIndex >= state.headers.length) return;
+    const width = columnWidth(state.headers[columnIndex], columnIndex);
+    elements.csvGrid.style.setProperty(columnWidthVariable(columnIndex), `${width}px`);
+    const handle = elements.gridHead.querySelector(`.column-resize-handle[data-column="${columnIndex}"]`);
+    if (handle) handle.setAttribute("aria-valuenow", String(width));
+  }
+
+  function refreshColumnWidthStyles() {
+    state.headers.forEach((header, columnIndex) => applyColumnWidthStyle(columnIndex));
+  }
+
+  function setManualColumnWidth(columnIndex, width) {
+    const boundedWidth = Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, Math.round(width)));
+    const firstManualWidth = !state.columnWidths.has(columnIndex);
+    state.columnWidths.set(columnIndex, boundedWidth);
+    applyColumnWidthStyle(columnIndex);
+    if (firstManualWidth) {
+      elements.csvGrid.querySelectorAll(`[data-column="${columnIndex}"]`).forEach((cell) => {
+        cell.classList.remove("compact-column-head", "compact-column-cell");
+      });
+      updateColumnWidthControls();
+    }
+    return boundedWidth;
+  }
+
+  function autoFitColumn(columnIndex) {
+    const header = state.headers[columnIndex] || "";
+    let longestText = String(header).length + 3;
+    state.records.forEach((record) => {
+      const text = String(getCellValue(record, columnIndex) || "");
+      const longestLine = text.split(/\r?\n/).reduce((longest, line) => Math.max(longest, line.length), 0);
+      longestText = Math.max(longestText, longestLine);
+    });
+    const estimatedWidth = Math.max(72, Math.ceil(longestText * 6.8 + 24));
+    setManualColumnWidth(columnIndex, estimatedWidth);
+  }
+
+  function finishColumnResize() {
+    if (!activeColumnResize) return;
+    document.removeEventListener("pointermove", handleColumnResizeMove);
+    document.removeEventListener("pointerup", finishColumnResize);
+    document.removeEventListener("pointercancel", finishColumnResize);
+    document.body.classList.remove("is-resizing-column");
+    activeColumnResize.handle.classList.remove("is-resizing");
+    if (
+      activeColumnResize.handle.hasPointerCapture
+      && activeColumnResize.handle.hasPointerCapture(activeColumnResize.pointerId)
+    ) {
+      activeColumnResize.handle.releasePointerCapture(activeColumnResize.pointerId);
+    }
+    activeColumnResize = null;
+    updateColumnWidthControls();
+  }
+
+  function handleColumnResizeMove(event) {
+    if (!activeColumnResize) return;
+    const width = activeColumnResize.startWidth + event.clientX - activeColumnResize.startX;
+    setManualColumnWidth(activeColumnResize.columnIndex, width);
+  }
+
+  function startColumnResize(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishColumnResize();
+    const handle = event.currentTarget;
+    const columnIndex = Number(handle.dataset.column);
+    activeColumnResize = {
+      columnIndex,
+      handle,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: columnWidth(state.headers[columnIndex], columnIndex)
+    };
+    if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+    handle.classList.add("is-resizing");
+    document.body.classList.add("is-resizing-column");
+    document.addEventListener("pointermove", handleColumnResizeMove);
+    document.addEventListener("pointerup", finishColumnResize);
+    document.addEventListener("pointercancel", finishColumnResize);
+  }
+
+  function handleColumnResizeKeydown(event) {
+    const columnIndex = Number(event.currentTarget.dataset.column);
+    if (event.key === "Enter") {
+      event.preventDefault();
+      autoFitColumn(columnIndex);
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      state.columnWidths.delete(columnIndex);
+      renderTable();
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const increment = event.shiftKey ? 30 : 10;
+    setManualColumnWidth(
+      columnIndex,
+      columnWidth(state.headers[columnIndex], columnIndex) + direction * increment
+    );
   }
 
   function renderHead() {
@@ -362,9 +544,13 @@
       const th = document.createElement("th");
       th.className = "sheet-column-head";
       if (columnIndex === state.indexes.areaSuite) th.classList.add("locked-column-head");
-      const width = columnWidth(header);
-      th.style.width = `${width}px`;
-      th.style.minWidth = `${width}px`;
+      const compact = isCompactEmptyColumn(columnIndex);
+      if (compact) th.classList.add("compact-column-head");
+      th.dataset.column = columnIndex;
+      const widthVariable = `var(${columnWidthVariable(columnIndex)})`;
+      th.style.width = widthVariable;
+      th.style.minWidth = widthVariable;
+      th.style.maxWidth = widthVariable;
 
       const letter = document.createElement("span");
       letter.className = "column-letter";
@@ -372,12 +558,31 @@
       const name = document.createElement("span");
       name.className = "column-name";
       name.textContent = header;
+      name.title = compact ? `${header} is empty. Use “Expand empty columns” to show it full width.` : header;
       if (columnIndex === state.indexes.areaSuite) {
         const lock = document.createElement("small");
         lock.textContent = "Locked";
         name.appendChild(lock);
       }
-      th.append(letter, name);
+      const resizeHandle = document.createElement("span");
+      resizeHandle.className = "column-resize-handle";
+      resizeHandle.tabIndex = 0;
+      resizeHandle.dataset.column = columnIndex;
+      resizeHandle.setAttribute("role", "separator");
+      resizeHandle.setAttribute("aria-orientation", "vertical");
+      resizeHandle.setAttribute("aria-label", `Resize column ${excelColumnName(columnIndex)}, ${header}`);
+      resizeHandle.setAttribute("aria-valuemin", String(MIN_COLUMN_WIDTH));
+      resizeHandle.setAttribute("aria-valuemax", String(MAX_COLUMN_WIDTH));
+      resizeHandle.setAttribute("aria-valuenow", String(columnWidth(header, columnIndex)));
+      resizeHandle.title = "Drag to resize · double-click or press Enter to auto-fit · press Home to reset";
+      resizeHandle.addEventListener("pointerdown", startColumnResize);
+      resizeHandle.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        autoFitColumn(columnIndex);
+      });
+      resizeHandle.addEventListener("keydown", handleColumnResizeKeydown);
+      th.append(letter, name, resizeHandle);
       row.appendChild(th);
     });
     elements.gridHead.appendChild(row);
@@ -393,9 +598,13 @@
 
   function createCell(record, columnIndex) {
     const td = document.createElement("td");
-    const width = columnWidth(state.headers[columnIndex]);
-    td.style.width = `${width}px`;
-    td.style.minWidth = `${width}px`;
+    const compact = isCompactEmptyColumn(columnIndex);
+    td.dataset.column = columnIndex;
+    const widthVariable = `var(${columnWidthVariable(columnIndex)})`;
+    td.style.width = widthVariable;
+    td.style.minWidth = widthVariable;
+    td.style.maxWidth = widthVariable;
+    if (compact) td.classList.add("compact-column-cell");
     if (columnIndex === state.indexes.areaSuite) td.classList.add("locked-cell");
     if (record.manualColumns.has(columnIndex)) td.classList.add("modified-cell");
     const field = fieldForColumn(columnIndex);
@@ -410,6 +619,7 @@
     input.dataset.index = record.index;
     input.dataset.column = columnIndex;
     input.setAttribute("aria-label", `${state.headers[columnIndex]} for row ${record.index + 1}`);
+    if (compact) input.placeholder = "—";
     if (columnIndex === state.indexes.areaSuite) {
       input.readOnly = true;
       input.title = "Locked source value";
@@ -421,6 +631,8 @@
   function renderTable() {
     const records = getFilteredRecords();
     const fragment = document.createDocumentFragment();
+    refreshEmptyUtilityColumns();
+    refreshColumnWidthStyles();
     renderHead();
     elements.reviewBody.textContent = "";
 
@@ -454,6 +666,7 @@
     elements.reviewBody.appendChild(fragment);
     elements.emptyResults.hidden = records.length > 0;
     elements.visibleSummary.textContent = `Showing ${records.length.toLocaleString()} of ${state.records.length.toLocaleString()} rows · ${state.headers.length} CSV columns`;
+    updateColumnWidthControls();
     updateSelectVisible();
     updateSelectionSummary();
   }
@@ -473,6 +686,7 @@
       if (record.learningId !== key) return;
       record.values[field] = value;
       record.manualColumns.add(columnIndex);
+      if (field === "deviceType") syncModelForDeviceType(record);
       changed += 1;
     });
     return changed;
@@ -503,9 +717,12 @@
     const columnIndex = Number(input.dataset.column);
     const field = fieldForColumn(columnIndex);
     const duplicates = field ? updateDuplicateRows(record, field, input.value) : 0;
+    const modelChanged = field === "deviceType" ? syncModelForDeviceType(record) : false;
     commitLearning(record);
     updateStats();
-    if (state.filter === "edited" || duplicates) renderTable();
+    if (state.filter === "edited" || duplicates || modelChanged || COMPACT_EMPTY_COLUMN_INDEXES.has(columnIndex)) {
+      renderTable();
+    }
   }
 
   function handlePaste(event) {
@@ -528,7 +745,10 @@
       line.split("\t").forEach((value, columnOffset) => {
         const columnIndex = startColumn + columnOffset;
         if (columnIndex >= state.headers.length || columnIndex === state.indexes.areaSuite) return;
-        if (setCellValue(record, columnIndex, value)) changed += 1;
+        if (setCellValue(record, columnIndex, value)) {
+          if (fieldForColumn(columnIndex) === "deviceType") syncModelForDeviceType(record);
+          changed += 1;
+        }
       });
       commitLearning(record);
     });
@@ -543,6 +763,7 @@
       for (const field of TARGET_FIELDS) {
         if (!record.manualColumns.has(state.indexes[field])) record.values[field] = next[field];
       }
+      if (record.manualColumns.has(state.indexes.deviceType)) syncModelForDeviceType(record);
     });
     renderWorkspace();
     showToast("Cleanup mode updated. Manual edits were kept.");
@@ -573,6 +794,7 @@
       if (!record) return;
       if (elements.bulkMode.value === "empty" && getCellValue(record, columnIndex)) return;
       if (setCellValue(record, columnIndex, value)) {
+        if (fieldForColumn(columnIndex) === "deviceType") syncModelForDeviceType(record);
         changed += 1;
         commitLearning(record);
       }
@@ -594,7 +816,6 @@
       record.manualColumns.clear();
       record.learned = false;
       record.values = outputValues(record, state.fillMode);
-      if (!record.original.floor && state.fillMode !== "empty") record.values.floor = record.inferred.floor;
     });
     saveLearning();
     renderWorkspace();
@@ -653,6 +874,10 @@
     state.rows = [];
     state.records = [];
     state.selected.clear();
+    state.compactEmptyColumns = true;
+    state.emptyUtilityColumns.clear();
+    state.columnWidths.clear();
+    finishColumnResize();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -727,4 +952,14 @@
     if (event.key === "Enter") applyBulkEdit();
   });
   elements.resetSelectedBtn.addEventListener("click", resetSelectedRows);
+  elements.compactEmptyBtn.addEventListener("click", () => {
+    state.compactEmptyColumns = !state.compactEmptyColumns;
+    renderTable();
+  });
+  elements.resetWidthsBtn.addEventListener("click", () => {
+    state.columnWidths.clear();
+    renderTable();
+    showToast("Column widths reset to their automatic sizes.");
+  });
+  window.addEventListener("blur", finishColumnResize);
 })();

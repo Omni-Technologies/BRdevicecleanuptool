@@ -216,6 +216,134 @@
     return String(currentDeviceType || "").trim();
   }
 
+  const DEFAULT_MODEL_NUMBERS = new Map([
+    ["pull station", "SIGA-278"]
+  ]);
+
+  function normalizedEvidenceKey(value) {
+    return normalizeForParsing(value).toLowerCase();
+  }
+
+  function addModelEvidence(index, key, modelNumber) {
+    if (!key || !modelNumber) return;
+    if (!index.has(key)) index.set(key, new Map());
+    const models = index.get(key);
+    const normalizedModel = normalizedEvidenceKey(modelNumber);
+    const current = models.get(normalizedModel) || { value: normalizeForParsing(modelNumber), count: 0 };
+    current.count += 1;
+    models.set(normalizedModel, current);
+  }
+
+  function resolveModelEvidence(models) {
+    if (!models || !models.size) return { value: "", evidence: 0, ambiguous: false };
+    const ranked = Array.from(models.values()).sort((left, right) => right.count - left.count);
+    const total = ranked.reduce((sum, item) => sum + item.count, 0);
+    if (ranked.length === 1) return { value: ranked[0].value, evidence: total, ambiguous: false };
+    const dominant = ranked[0].count >= 2
+      && ranked[0].count / total >= 0.8
+      && ranked[0].count > ranked[1].count;
+    return {
+      value: dominant ? ranked[0].value : "",
+      evidence: total,
+      ambiguous: !dominant
+    };
+  }
+
+  function modelEvidenceIndexes(records) {
+    const byDeviceType = new Map();
+    const byManufacturerAndType = new Map();
+
+    records.forEach((record) => {
+      const inferredType = normalizedEvidenceKey(
+        (record.inferred && record.inferred.deviceType) || record.deviceType
+      );
+      const originalType = normalizedEvidenceKey(
+        (record.original && record.original.deviceType) || record.originalDeviceType
+      );
+      const modelNumber = normalizeForParsing(
+        (record.original && record.original.modelNumber) || record.modelNumber
+      );
+      if (!inferredType || inferredType !== originalType || !modelNumber) return;
+
+      const manufacturer = normalizedEvidenceKey(
+        record.manufacturer || (record.original && record.original.manufacturer)
+      );
+      addModelEvidence(byDeviceType, inferredType, modelNumber);
+      if (manufacturer) addModelEvidence(byManufacturerAndType, `${manufacturer}||${inferredType}`, modelNumber);
+    });
+
+    return { byDeviceType, byManufacturerAndType };
+  }
+
+  function inferModelNumberFromIndexes(deviceType, manufacturer, indexes) {
+    const typeKey = normalizedEvidenceKey(deviceType);
+    if (!typeKey) return { value: "", source: "", evidence: 0 };
+    const manufacturerKey = normalizedEvidenceKey(manufacturer);
+
+    if (manufacturerKey) {
+      const manufacturerResult = resolveModelEvidence(
+        indexes.byManufacturerAndType.get(`${manufacturerKey}||${typeKey}`)
+      );
+      if (manufacturerResult.value) {
+        return {
+          value: manufacturerResult.value,
+          source: "manufacturer-device context",
+          evidence: manufacturerResult.evidence
+        };
+      }
+    }
+
+    const typeEvidence = indexes.byDeviceType.get(typeKey);
+    const typeResult = resolveModelEvidence(typeEvidence);
+    if (typeResult.value) {
+      return {
+        value: typeResult.value,
+        source: "device context",
+        evidence: typeResult.evidence
+      };
+    }
+
+    // Conflicting in-file evidence is stronger than a generic default.
+    if (typeResult.ambiguous) return { value: "", source: "conflicting context", evidence: typeResult.evidence };
+
+    const defaultValue = DEFAULT_MODEL_NUMBERS.get(typeKey) || "";
+    return {
+      value: defaultValue,
+      source: defaultValue ? "known device mapping" : "",
+      evidence: 0
+    };
+  }
+
+  function inferModelNumber(deviceType, manufacturer, records) {
+    return inferModelNumberFromIndexes(deviceType, manufacturer, modelEvidenceIndexes(records || []));
+  }
+
+  function applyModelContext(records) {
+    const indexes = modelEvidenceIndexes(records);
+    records.forEach((record) => {
+      if (!record.inferred) return;
+      if (record.inferred.modelNumber) return;
+      if (!Array.isArray(record.inferred.reasons)) record.inferred.reasons = [];
+      const suggestion = inferModelNumberFromIndexes(
+        record.inferred.deviceType || record.deviceType,
+        record.manufacturer || (record.original && record.original.manufacturer),
+        indexes
+      );
+      record.inferred.modelNumber = suggestion.value;
+      record.inferred.modelNumberSource = suggestion.source;
+      record.inferred.modelNumberEvidence = suggestion.evidence;
+      if (suggestion.value) {
+        const contextText = suggestion.evidence === 1 ? "matching row" : "matching rows";
+        record.inferred.reasons.push(
+          suggestion.evidence
+            ? `model matched from ${suggestion.evidence} ${contextText}`
+            : "model matched from device type"
+        );
+      }
+    });
+    return records;
+  }
+
   function cleanDescription(value) {
     const original = normalizeForParsing(value);
     if (!original) return "";
@@ -509,6 +637,7 @@
         record.inferred.reasons.push("floor suggested from a similar row");
       }
     });
+    applyModelContext(records);
     return records;
   }
 
@@ -522,8 +651,10 @@
     extractFloor,
     extractDirection,
     inferDeviceType,
+    inferModelNumber,
     cleanDescription,
     inferFields,
+    applyModelContext,
     applyContext,
     cleanupSpelling,
     titleCaseField
