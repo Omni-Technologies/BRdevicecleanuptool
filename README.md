@@ -18,7 +18,7 @@ AI suggestions never override manual edits or learned corrections, and AreaSuite
 ## Current capabilities
 
 - Preserves every original CSV row, column, and `AreaSuite` value.
-- Fills blank ScanNumbers with unique sequential placeholders (`0000000001`, …) because BuildingReports import rejects blanks.
+- Fills blank ScanNumbers with unique sequential placeholders (`1000000001`, …) because BuildingReports import rejects blanks.
 - Corrects strongly identified Device Types, including Pull Station, Duct Detector, Smoke Detector, Heat Detector, Waterflow Switch, and Power Supply.
 - Keeps ModelNumber aligned with DeviceType by learning from correct rows in the same file; Pull Station falls back to `SIGA-278` when no stronger file evidence exists.
 - Extracts numbered floors, Lower Level, Penthouse, Mezzanine, Roof, Basement, Ground Floor, and parking levels.

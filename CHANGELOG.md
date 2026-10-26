@@ -8,7 +8,7 @@
 - AI Assist may choose any of BuildingReports' 121 Fire Alarm DeviceTypes, not only the six rule targets and types already in the file. A DeviceType settled by a matched rule is kept over the AI's answer. The AI may not swap one generic module type for another or turn a relay into a detector or switch.
 
 - Added optional AI Assist (DeepSeek `deepseek-flash`). It reads each AreaSuite and panel label in file context and fills Floor, Direction, Location, Zone, and DeviceType, plus optional Description and Type, as reviewable suggestions with confidence and notes. Includes an "AI filled" filter, undo, cancel, per-customer extra rules, and a key that can be remembered or forgotten.
-- Blank ScanNumbers get unique sequential placeholders at import, matching the file's digit width (`0000000001`, …), because BuildingReports import rejects blanks.
+- Blank ScanNumbers get unique sequential placeholders at import, matching the file's digit width (`1000000001`, …), because BuildingReports import rejects blanks. They start with 1, not zeros, so Excel keeps every digit.
 - AI output is validated in code: unknown rows and fields are rejected, DeviceType is limited to allowed values, and Zone is accepted only when literally stated in the source.
 
 - Added context-aware ModelNumber inference from correct same-file DeviceType and manufacturer matches.

@@ -149,8 +149,9 @@ Context suggestions remain medium confidence.
 
 ## ScanNumber placeholders
 
-BuildingReports import rejects a blank ScanNumber. At import, every blank or whitespace-only ScanNumber gets a sequential placeholder: `0000000001`, `0000000002`, and so on, in row order.
+BuildingReports import rejects a blank ScanNumber. At import, every blank or whitespace-only ScanNumber gets a sequential placeholder: `1000000001`, `1000000002`, and so on, in row order.
 
+- Placeholders start with `1`, not zeros, so Excel keeps every digit when the export is opened and saved there (it turns `0000000001` into `1`).
 - The width matches the most common digit length among the file's numeric ScanNumbers, which is 10 in current exports. It falls back to 10 when the file has none.
 - A placeholder never repeats a ScanNumber already in the file. Taken values are skipped.
 - Existing ScanNumbers are never changed. Placeholders show as suggested cells, can be edited like any cell, and are exported.

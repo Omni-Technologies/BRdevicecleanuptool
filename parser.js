@@ -597,13 +597,13 @@
     const width = lengths.size
       ? Array.from(lengths.entries()).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
       : 10;
-    let next = 1;
+    let next = 10 ** (width - 1) + 1;
     return existing.map((value) => {
       if (value) return "";
-      let candidate = String(next).padStart(width, "0");
+      let candidate = String(next);
       while (taken.has(candidate)) {
         next += 1;
-        candidate = String(next).padStart(width, "0");
+        candidate = String(next);
       }
       next += 1;
       taken.add(candidate);
