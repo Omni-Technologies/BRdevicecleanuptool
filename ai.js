@@ -10,7 +10,37 @@
   const MODELS = ["deepseek-flash", "deepseek-v4-pro"];
 
   const KNOWN_DEVICE_TYPES = [
-    "Duct Detector", "Heat Detector", "Power Supply", "Pull Station", "Smoke Detector", "Waterflow Switch"
+    "Acoustic Leak Detector", "Air Pressure Switch", "Alarm Device", "Alarm Pressure Switch", "Amplifier",
+    "Annunciator", "Aspirating Detector", "Base", "Battery", "Beacon", "Beam Detector", "Bell", "Bell/Strobe",
+    "Building Automation", "Call Station", "Carbon Dioxide System", "Chemical System", "Chime", "Chime/Strobe",
+    "Clean Agent System", "CO Alarm", "CO Detector", "Communication Line", "Communicator", "Control Panel", "Damper",
+    "Damper Control", "Disconnect", "Door Smoke Detector", "Duct Detector", "Egress Markers", "Elevator",
+    "Emergency Light", "Emergency Power Off", "Emergency Power Supply", "End Of Line", "Exit Light", "Expander Panel",
+    "Fan Purge System", "Fan Running", "Fan Shutdown", "Fan Start", "Fault Isolation Module", "Fire Barrier",
+    "Fire Curtain", "Fire Pump Auto", "Fire Pump Phase Reversal", "Fire Pump Power", "Fire Pump Running",
+    "Fire Pump Trouble", "Flame Detector", "Foam System", "Gas Detector", "Gas Shutdown", "Generator Auto",
+    "Generator Running", "Generator Trouble", "Handset", "Heat Detector", "Horn", "Horn/Strobe", "Indicating Device",
+    "Initiating Device", "Kitchen Hood", "Knox Box", "Lighting Control", "Locking Device", "Low Fuel",
+    "Low Temperature", "Low Water", "Low-Freq. Sounder/Strobe", "Low-Frequency Sounder", "Master Control Station",
+    "Masterbox", "Microphone", "Mini-Horn", "Module", "Monitor Device", "Monitoring", "Multi-Criteria Detector",
+    "Multi-Criteria Smoke Alarm", "Multi-Sensor Alarm", "Multi-Sensor Detector", "No Entry Sign",
+    "Non-Programmable Relay", "Phone Jack", "Phone Station", "Power Loss", "Power Supply", "Pre-Action Signal",
+    "Pre-Action System", "Printer", "Programmable Relay", "Pull Station", "Releasing Device", "Remote Indicator",
+    "Remote Test Switch", "Repeater", "Roll Down Door", "Signage", "Sliding Door", "Smoke Alarm", "Smoke Detector",
+    "Sound Shutdown", "Speaker", "Speaker Array", "Speaker/Strobe", "Special Control", "Stairwell Exit", "Strobe",
+    "Supervisory Device", "Supervisory Valve", "Surge Protector", "System Documents", "Tamper Switch",
+    "Thermal Imaging Detector", "Transformer", "Voice Evacuation", "Water Mist System", "Water Pressure Switch",
+    "Waterflow Switch"
+  ];
+
+  const GENERIC_DEVICE_TYPES = ["initiating device", "monitor device", "module"];
+  const RELAY_DEVICE_TYPES = ["programmable relay", "non-programmable relay", "control relay", "relay"];
+  const DETECTOR_DEVICE_TYPES = [
+    "acoustic leak detector", "air pressure switch", "alarm pressure switch", "aspirating detector", "beam detector",
+    "co alarm", "co detector", "door smoke detector", "duct detector", "flame detector", "gas detector", "heat detector",
+    "multi-criteria detector", "multi-criteria smoke alarm", "multi-sensor alarm", "multi-sensor detector", "pull station",
+    "smoke alarm", "smoke detector", "supervisory valve", "tamper switch", "thermal imaging detector",
+    "water pressure switch", "waterflow switch"
   ];
 
   const KNOWN_TYPES = ["Supervisory", "Verification", "Tamper", "NS Output", "General Alarm"];
@@ -40,12 +70,23 @@
 
   const FIELD_RULES = {
     deviceType:
-      "DeviceType: keep the exported value unless the tech's text clearly names a different device. " +
-      "Text that names the device wins over a generic type: PULL → Pull Station, DUCT SMK/DUCT SMOKE → Duct Detector, " +
-      "SMOKE/SMK (a detector, not a smoke damper or smoke control relay) → Smoke Detector, HEAT → Heat Detector, " +
-      "WATERFLOW/WF FLOW → Waterflow Switch, POWER SUPPLY/PWR SPLY → Power Supply. Apply these mappings to every matching row, " +
-      "including monitor modules (an Initiating Device whose text names a HEAT detector becomes Heat Detector). Relays that drive " +
-      "dampers, doors, fans, elevator recall or shunt trip stay relays. Use only a value from the allowed DeviceType list.",
+      "DeviceType: the exported value names the panel module, and generic modules (Initiating Device or Monitor Device = an input, " +
+      "Programmable Relay = a relay output) should become the BuildingReports type for what the point is or does, chosen only " +
+      "from the allowed DeviceType list. Device words win, even when the text also names a place such as an elevator pit or a " +
+      "preaction system: PULL → Pull Station, DUCT SMK/DUCT SMOKE → Duct Detector, SMOKE/SMK → Smoke Detector, HEAT → Heat Detector, " +
+      "WATERFLOW (also misspelled WATEERFLOW, WATERLFOW, WATERFOW) → Waterflow Switch, TAMPER/PIV/OS&Y → Tamper Switch, " +
+      "LOW AIR/HIGH AIR → Air Pressure Switch, BEAM → Beam Detector, ANSUL/KITCHEN HOOD → Kitchen Hood, " +
+      "FIRE PUMP RUNNING/POWER/PHASE REVERSAL/TROUBLE → the matching Fire Pump type, POWER SUPPLY/PWR SPLY → Power Supply. " +
+      "Preaction ALARM/TROUBLE monitors and PREACTION TRIP relays → Pre-Action System. Elevator RECALL, SHUNT TRIP/SHUNT POWER, " +
+      "and FIRE HAT points, relay or monitor → Elevator. A relay takes the type of what it controls: DAMPER → Damper Control, " +
+      "AHU/fan/exhaust SHUTDOWN → Fan Shutdown, PURGE → Fan Purge System, SMOKE CURTAIN/ROLL DOOR → Roll Down Door, " +
+      "FIRE CURTAIN → Fire Curtain, AUTO DOOR → Releasing Device. STROBE PANEL/STROBE CONTROL signal modules → Programmable Relay. " +
+      "Amplifiers exported as Voice Evacuation (AMP, AA30, AA50) → Amplifier. " +
+      "A relay is never a detector or switch: SMOKE CONTROL RELAY or RELAY FOR WATERFLOW BELL stays Programmable Relay, and so do " +
+      "door holder, door unlock, dialer, and alarm-to-other-panel relays. Monitor points that report another panel or system " +
+      "(CHECK FIKE PANEL, AMP PANELS TROUBLE, NAC PANELS TROUBLE, DIALER TROUBLE) and AUDIO circuit modules keep the exported " +
+      "type. A detector or pull station keeps its exported type unless " +
+      "the text names a different detector. When no allowed type clearly fits, keep the exported value.",
     floor:
       "Floor: exactly one of \"1st Floor\", \"2nd Floor\", \"3rd Floor\", \"4th Floor\" … \"12th Floor\" (ordinal + Floor), " +
       "\"Basement\" (BSMT), \"Lower Level\" (LL), \"Ground Floor\", \"Mezzanine\" (MEZZ), \"Penthouse\" (PENT, PH), \"Roof\", " +
@@ -251,6 +292,14 @@
     return allowed.find((item) => item.toLowerCase() === text) || "";
   }
 
+  function deviceTypeChangeAllowed(value, exported) {
+    const next = value.toLowerCase();
+    const current = clean(exported).toLowerCase();
+    if (next === current) return true;
+    if (GENERIC_DEVICE_TYPES.includes(next)) return false;
+    return !(RELAY_DEVICE_TYPES.includes(current) && DETECTOR_DEVICE_TYPES.includes(next));
+  }
+
   function parseJsonContent(content) {
     const text = String(content || "").trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
     return JSON.parse(text);
@@ -277,6 +326,7 @@
         if (field.key === "zone" && !zoneIsStated(value, expected.get(id))) return;
         if (field.key === "deviceType") value = canonicalValue(value, settings.allowedDeviceTypes || KNOWN_DEVICE_TYPES);
         if (field.key === "deviceType" && !value) return;
+        if (field.key === "deviceType" && !deviceTypeChangeAllowed(value, expected.get(id).payload[0])) return;
         if (field.key === "type" && value) {
           value = canonicalValue(value, settings.allowedTypes || KNOWN_TYPES);
           if (!value) return;

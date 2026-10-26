@@ -20,16 +20,54 @@ Description cleanup:
 
 ## DeviceType priority
 
-Specific patterns run before broad ones:
+Each rule applies only to certain exported types:
 
-1. `PULL` → `Pull Station`
-2. `DUCT` → `Duct Detector`
-3. `SMOKE`, `SMK`, or common transposition → `Smoke Detector`
-4. `HEAT` → `Heat Detector`
-5. `WATERFLOW` / `WATER FLOW` → `Waterflow Switch`
-6. `POWER SUPPLY` / common abbreviations → `Power Supply`
+- **input**: generic monitor modules (`Initiating Device`, `Monitor Device`, `Module`, `Alarm Device`, `Supervisory Device`, blank).
+- **relay**: `Programmable Relay`, `Non-Programmable Relay`, `Control Relay`, `Relay`.
+- **device**: every other exported type (detectors, pull stations, notification appliances, and so on).
 
-This order ensures `DUCT SMOKE` becomes Duct Detector, not Smoke Detector. Avoid adding ambiguous mappings such as Relay or Tamper without representative completed exports.
+A rule can also name one exact exported type. Every target is a BuildingReports Fire Alarm (F1) DeviceType; the full F1 list is `KNOWN_DEVICE_TYPES` in `ai.js`.
+
+Specific patterns run before broad ones. The first rule that applies to the row's exported type and matches its text wins. A matched rule settles the row's DeviceType: AI Assist cannot change it. "Keep" rules settle the exported type without changing it.
+
+| # | Text | DeviceType | Applies to |
+|---|---|---|---|
+| 1 | `AUDIO` (audio circuit modules) | keep exported | input |
+| 2 | `STROBE PANEL`, `STROBE CONTROL`, without `TROUBLE`/`TRBL`/`FAULT` | Programmable Relay | input |
+| 3 | `AMP`, `AMPLIFIER`, `AA30`, `AA50` | Amplifier | exported `Voice Evacuation` only |
+| 4 | `PULL` | Pull Station | input, device |
+| 5 | `BEAM` | Beam Detector | input, relay (beam reset relays) |
+| 6 | `DUCT` | Duct Detector | input, device |
+| 7 | `FIRE CURTAIN` | Fire Curtain | input, relay |
+| 8 | `SMOKE CURTAIN`, `ROLL DOOR`, `ROLL DOWN` | Roll Down Door | input, relay |
+| 9 | `SMOKE`, `SMK`, common transposition | Smoke Detector | input, device |
+| 10 | `HEAT` | Heat Detector | input, device |
+| 11 | `WATERFLOW`, `WATER FLOW`, `WATEERFLOW`, `WATERLFOW`, `WATERFOW`, `WTR FLOW`, `FLOW SWITCH` | Waterflow Switch | input, device |
+| 12 | `TAMPER`, `TAMP`, `PIV`, `OS&Y` | Tamper Switch | input, device |
+| 13 | `LOW AIR`, `HIGH AIR`, `HI/LO AIR`, `AIR PRESSURE` | Air Pressure Switch | input, device |
+| 14 | `ANSUL`, `KITCHEN HOOD`, `HOOD SYSTEM` | Kitchen Hood | input |
+| 15 | `FIRE PUMP RUN(NING)` / `PHASE REVERSAL` / `POWER` / `TROUBLE` | Fire Pump Running / Phase Reversal / Power / Trouble | input |
+| 16 | `POWER SUPPLY` and common abbreviations | Power Supply | input, device |
+| 17 | `PREACTION`, `PRE ACTION`, `PRE-ACTION` | Pre-Action System | input, relay |
+| 18 | `ELEV`/`ELEVATOR` together with `RECALL`, `SHUNT`, or `(FIRE) HAT` | Elevator | input, relay |
+| 19 | `DAMPER` | Damper Control | relay |
+| 20 | `PURGE` | Fan Purge System | relay |
+| 21 | `AHU`/`RTU`/`MAU`/`CAU`/`EF`/`FAN`/`EXHAUST` together with `SHUTDOWN`/`SHUTDWN` | Fan Shutdown | relay |
+| 22 | `AUTODOOR`, `AUTO DOOR` | Releasing Device | relay |
+
+Consequences of this order and scoping:
+
+- `DUCT SMOKE` becomes Duct Detector, not Smoke Detector.
+- A device word wins over a place: `TAMPER BSMT ATRIUM ELEVATOR 32 PIT` is a Tamper Switch, `WATERFLOW 4 CENTER C-SECTION PREACTION` a Waterflow Switch, `LOW AIR … PREACTION` an Air Pressure Switch. Only preaction points with no device word (`TROUBLE … PREACTION`, `PREACTION TRIP`) become Pre-Action System.
+- A relay never becomes a detector or switch: `SMOKE CONTROL RELAY`, `RELAY FOR WATERFLOW BELL`, and a relay labeled `DUCT SMOKE` stay Programmable Relay.
+- Detector types never take relay function types: a Smoke Detector labeled `ELEV LOBBY RECALL` stays a Smoke Detector.
+- `NORTH PENT AHU SHUTDOWN ELEV 17 EQUIP RM` is a Fan Shutdown: the Elevator rule needs RECALL, SHUNT, or HAT.
+
+- `AMP PANELS TROUBLE` monitors stay Initiating Device: the Amplifier rule only applies to rows exported as Voice Evacuation.
+
+These mappings follow BuildingReports' own types and a completed BuildingReports export of the same building, where dampers were Damper Control, AHU shutdowns Fan Shutdown, elevator recall/shunt/fire hat points Elevator, smoke curtains Roll Down Door, and auto doors Releasing Device. Rules 1–3 and 20 are the user's house decisions (2026-10-26): amplifiers import as Amplifier, strobe panel signal modules as Programmable Relay, audio circuit modules keep Initiating Device, and purge relays become Fan Purge System.
+
+Deliberately left unchanged (no rule): door holder and door unlock/release relays, dialer relays, relays and monitors that talk to another panel (`ALARM TO FIKE`, `CHECK FIKE PANEL`), and amplifier and NAC panel trouble monitors. They keep their exported type unless AI Assist finds a clearly better one.
 
 ## ModelNumber inference
 
@@ -124,7 +162,7 @@ AI Assist follows the same house format as the rules above. The full prompt word
 - **Floor:** `1st Floor` … `12th Floor`, Basement, Lower Level, Ground Floor, Mezzanine, Penthouse, Roof, or parking `2P`. A bare number before a wing or building name (`4 CENTER`, `7 TOWER`) is the floor. A bare `3` returned by the model is normalized to `3rd Floor`.
 - **Direction:** the wing, building, tower, or compass area, spelled one way across the file. The file conventions pass fixes the spellings.
 - **Location:** the specific place, in Title Case with every word capitalized. Device words and the floor and area already used are removed, and shorthand is expanded (RM, MECH, ELEV, EQUIP, ELEC, BSMT, PENT). Room numbers, stair letters, elevator numbers, and equipment tags are kept exactly as written. Uncertain abbreviations are left as written.
-- **DeviceType:** the exported value is kept unless the text clearly names a device. The mapping matches the parser: PULL, DUCT, SMOKE, HEAT, WATERFLOW, POWER SUPPLY. Only types already in the file, plus those six targets, are accepted. ModelNumber then follows the existing ModelNumber inference.
+- **DeviceType:** generic module types become the BuildingReports type for what the point is or does, using the same mappings as the DeviceType table above. Rows that table leaves alone (door holder relays, other-panel monitors) keep the exported type unless a better type clearly fits. Any type in `KNOWN_DEVICE_TYPES` (`ai.js`, BuildingReports' full Fire Alarm list of 121 types, read from the Device Import Tool on 2026-10-26) or already in the file is accepted. When a parser rule matched the row, including a "keep" rule, its DeviceType is settled and the AI's answer is ignored. Code also rejects an AI DeviceType that only swaps one generic module type for another (Initiating Device ↔ Monitor Device ↔ Module) or turns a relay into a detector or switch. ModelNumber then follows the existing ModelNumber inference.
 - **Zone:** filled only when the zone is literally stated, as in `Z15` or `ZONE 15` in AreaSuite or Description, and only into a blank Zone cell. Leading address numbers such as `13 PULL DOOR 17` are rejected in code even if the model returns them.
 - **Description:** off by default. The completed reference export keeps Description as the cleaned original. When enabled, it becomes a short device-function statement such as `Damper Relay` or `Duct Detector - AHU 5N1 Supply`, with one wording per function keyword.
 - **Type:** off by default. Filled only when the text states it explicitly.

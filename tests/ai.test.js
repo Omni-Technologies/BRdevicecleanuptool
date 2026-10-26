@@ -192,5 +192,35 @@ test("file profile lists DeviceTypes from the file plus known BuildingReports ty
   const profile = AI.buildFileProfile([row(0, "SMOKE 3 NORTH LOBBY", { deviceType: "Custom Gadget" })]);
   assert.ok(profile.allowedDeviceTypes.includes("Custom Gadget"));
   assert.ok(profile.allowedDeviceTypes.includes("Pull Station"));
+  assert.ok(profile.allowedDeviceTypes.includes("Tamper Switch"));
+  assert.ok(profile.allowedDeviceTypes.includes("Damper Control"));
   assert.equal(profile.descriptionLabels[0][0], "EXAMPLE CAMPUS\\NORTH\\3 NORTH Z20");
+});
+
+test("accepts any known BuildingReports DeviceType the file does not already contain", () => {
+  const batch = [{ id: 0, payload: [] }, { id: 1, payload: [] }];
+  const content = JSON.stringify({ rows: [{ id: 0, DeviceType: "tamper switch" }, { id: 1, DeviceType: "Roll Down Door" }] });
+  const profile = AI.buildFileProfile([row(0, "TAMPER 3 NORTH STAIR B", { deviceType: "Initiating Device" })]);
+  const results = AI.parseBatchResponse(content, batch, { fields: ["deviceType"], allowedDeviceTypes: profile.allowedDeviceTypes });
+  assert.equal(results.get(0).values.deviceType, "Tamper Switch");
+  assert.equal(results.get(1).values.deviceType, "Roll Down Door");
+});
+
+test("rejects generic-to-generic DeviceType swaps and relays turned into detectors", () => {
+  const batch = [
+    { id: 0, payload: ["Initiating Device"] }, { id: 1, payload: ["Monitor Device"] },
+    { id: 2, payload: ["Programmable Relay"] }, { id: 3, payload: ["Programmable Relay"] },
+    { id: 4, payload: ["Non-Programmable Relay"] }
+  ];
+  const content = JSON.stringify({ rows: [
+    { id: 0, DeviceType: "Monitor Device" }, { id: 1, DeviceType: "Monitor Device" },
+    { id: 2, DeviceType: "Duct Detector" }, { id: 3, DeviceType: "Damper Control" },
+    { id: 4, DeviceType: "Door Smoke Detector" }
+  ] });
+  const results = AI.parseBatchResponse(content, batch, { fields: ["deviceType"], allowedDeviceTypes: AI.KNOWN_DEVICE_TYPES });
+  assert.equal(results.get(0).values.deviceType, undefined);
+  assert.equal(results.get(1).values.deviceType, "Monitor Device");
+  assert.equal(results.get(2).values.deviceType, undefined);
+  assert.equal(results.get(3).values.deviceType, "Damper Control");
+  assert.equal(results.get(4).values.deviceType, undefined);
 });

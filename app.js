@@ -275,7 +275,9 @@
         inferenceScore(cleanedDescription, descriptionInference) > inferenceScore(areaSuite, areaInference) + 2;
       const parseSource = descriptionIsBetter ? cleanedDescription : areaSuite;
       const inferred = descriptionIsBetter ? descriptionInference : areaInference;
-      inferred.deviceType = Parser.inferDeviceType(`${areaSuite} ${cleanedDescription}`, deviceType);
+      const typeRule = Parser.matchDeviceTypeRule(`${areaSuite} ${cleanedDescription}`, deviceType);
+      inferred.deviceType = typeRule.value;
+      inferred.deviceTypeRule = typeRule.matched;
       inferred.description = cleanedDescription;
       const learnedId = learningKey(deviceType, `${areaSuite}||${cleanedDescription}`);
       const learned = state.learning[learnedId];
@@ -1037,11 +1039,19 @@
     });
   }
 
+  function keepRuleDeviceType(record, suggestion) {
+    if (!record.ruleInferred.deviceTypeRule) return suggestion;
+    const values = { ...suggestion.values };
+    delete values.deviceType;
+    return { ...suggestion, values };
+  }
+
   function applyAiSuggestions(entries) {
-    entries.forEach(([index, suggestion]) => {
+    entries.forEach(([index, aiSuggestion]) => {
       const record = state.records[index];
       if (!record) return;
       if (!record.ruleInferred) record.ruleInferred = { ...record.inferred, reasons: record.inferred.reasons.slice() };
+      const suggestion = keepRuleDeviceType(record, aiSuggestion);
       const inferred = { ...record.inferred, modelNumber: "", source: "ai" };
       TARGET_FIELDS.forEach((field) => {
         if (!Object.prototype.hasOwnProperty.call(suggestion.values, field)) return;

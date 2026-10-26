@@ -57,7 +57,7 @@ No dependency installation is needed.
 ## Changing AI Assist
 
 - Prompt wording and house-format rules live in `ai.js` (`FIELD_RULES`, `conventionsMessages`, `batchMessages`). Change them there, then re-run a sample against a real export and compare before and after.
-- Model output is untrusted. `parseBatchResponse` must keep rejecting unknown row ids, DeviceTypes outside the allowed list, and any Zone not literally stated in the source text. AreaSuite is never an output field.
+- Model output is untrusted. `parseBatchResponse` must keep rejecting unknown row ids, DeviceTypes outside the allowed list, DeviceType changes that only swap one generic module type for another or turn a relay into a detector, and any Zone not literally stated in the source text. A DeviceType settled by a matched parser rule (`Parser.matchDeviceTypeRule`, stored as `inferred.deviceTypeRule`) outranks the AI's answer (`app.js:keepRuleDeviceType`). `KNOWN_DEVICE_TYPES` is BuildingReports' exact Fire Alarm (F1) list; refresh it from the Device Import Tool (`appDevices.F1` on the logged-in page) rather than editing it by hand. AreaSuite is never an output field.
 - AI results go into the `inferred` layer only. `record.ruleInferred` keeps the rule-based suggestion so **Undo AI suggestions** can restore it. Manual edits and learned corrections always win.
 - Tests in `tests/ai.test.js` use a mocked `fetch`; they must never call the real API.
 

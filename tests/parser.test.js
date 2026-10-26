@@ -42,6 +42,79 @@ test("corrects DeviceType from strong source terminology", () => {
   assert.equal(Parser.inferDeviceType("WATERFLOW BLDG 14", "Initiating Device"), "Waterflow Switch");
 });
 
+test("corrects generic monitor modules to the device the text names", () => {
+  assert.equal(Parser.inferDeviceType("TAMPER BSMT NORTH ELEVATOR 3 PIT", "Initiating Device"), "Tamper Switch");
+  assert.equal(Parser.inferDeviceType("TAMPER 2 EAST COMPUTER ROOM PREACTION", "Initiating Device"), "Tamper Switch");
+  assert.equal(Parser.inferDeviceType("WATERFLOW 4 EAST LAB PREACTION", "Initiating Device"), "Waterflow Switch");
+  assert.equal(Parser.inferDeviceType("WATEERFLOW CANOPY DRY SYSTEM", "Initiating Device"), "Waterflow Switch");
+  assert.equal(Parser.inferDeviceType("WATERLFOW EAST PENTHOUSE", "Initiating Device"), "Waterflow Switch");
+  assert.equal(Parser.inferDeviceType("1 SOUTH WATERFOW ACTIVE", "Initiating Device"), "Waterflow Switch");
+  assert.equal(Parser.inferDeviceType("LOW AIR 1 NORTH DATA ROOM PRE ACTION", "Initiating Device"), "Air Pressure Switch");
+  assert.equal(Parser.inferDeviceType("TROUBLE 5 EAST LAB PREACTION", "Initiating Device"), "Pre-Action System");
+  assert.equal(Parser.inferDeviceType("BEAM SMK ATRIUM ABOVE PODS", "Initiating Device"), "Beam Detector");
+  assert.equal(Parser.inferDeviceType("ANSUL 2 EAST CAFE KITCHEN", "Initiating Device"), "Kitchen Hood");
+  assert.equal(Parser.inferDeviceType("SHUNT POWER NORTH PENT ELEV 2 EQUIP RM", "Initiating Device"), "Elevator");
+  assert.equal(Parser.inferDeviceType("FIRE PUMP RUN WATER SERVICE RM 114", "Monitor Device"), "Fire Pump Running");
+  assert.equal(Parser.inferDeviceType("HEAT BSMT NORTH ELEVATOR 3 PIT", "Initiating Device"), "Heat Detector");
+});
+
+test("corrects relays to the function they control and never to a detector", () => {
+  assert.equal(Parser.inferDeviceType("DAMPER 5 EAST MECH RM AHU 5N1 SUPPLY", "Programmable Relay"), "Damper Control");
+  assert.equal(Parser.inferDeviceType("AHU 2N01 RETURN SHUTDOWN MECH RM 2450", "Programmable Relay"), "Fan Shutdown");
+  assert.equal(Parser.inferDeviceType("SOUTH PENT STAIR C PRESS FAN SHUTDWN", "Programmable Relay"), "Fan Shutdown");
+  assert.equal(Parser.inferDeviceType("ELEV 2-3 ALT RECALL - PENT EQUIP RM", "Programmable Relay"), "Elevator");
+  assert.equal(Parser.inferDeviceType("ELEV 17 HAT NORTH PENT ELEV 17 EQUIP RM", "Programmable Relay"), "Elevator");
+  assert.equal(Parser.inferDeviceType("NORTH PENT AHU SHUTDOWN ELEV 17 EQUIP RM", "Programmable Relay"), "Fan Shutdown");
+  assert.equal(Parser.inferDeviceType("SMOKE CURTAIN 3 NORTH ELEV 2 LOBBY", "Programmable Relay"), "Roll Down Door");
+  assert.equal(Parser.inferDeviceType("ROLL DOOR 2 EAST GIFT SHOP", "Programmable Relay"), "Roll Down Door");
+  assert.equal(Parser.inferDeviceType("AUTODOOR 10 EAST CLINIC ENTRANCE", "Programmable Relay"), "Releasing Device");
+  assert.equal(Parser.inferDeviceType("PREACTION TRIP 2 EAST COMPUTER ROOM", "Programmable Relay"), "Pre-Action System");
+  assert.equal(Parser.inferDeviceType("RELAY FOR WATERFLOW BELL", "Programmable Relay"), "Programmable Relay");
+  assert.equal(Parser.inferDeviceType("VAV OR-1 SMOKE CONTROL RELAY", "Programmable Relay"), "Programmable Relay");
+  assert.equal(Parser.inferDeviceType("DOOR UNLOCK 2 EAST EXIT TO PATIO", "Programmable Relay"), "Programmable Relay");
+});
+
+test("every DeviceType a rule produces is a BuildingReports Fire Alarm type", () => {
+  const AI = require("../ai.js");
+  const samples = [
+    ["PULL LOBBY", "Initiating Device"], ["BEAM SMK ATRIUM", "Initiating Device"], ["DUCT AHU 1", "Initiating Device"],
+    ["FIRE CURTAIN STAGE", "Programmable Relay"], ["SMOKE CURTAIN ELEV 2 LOBBY", "Programmable Relay"],
+    ["SMOKE LOBBY", "Initiating Device"], ["HEAT BOILER ROOM", "Initiating Device"], ["WATERFLOW RISER 1", "Initiating Device"],
+    ["TAMPER RISER 1", "Initiating Device"], ["LOW AIR DRY SYSTEM", "Initiating Device"], ["ANSUL KITCHEN", "Initiating Device"],
+    ["FIRE PUMP RUNNING", "Initiating Device"], ["FIRE PUMP PHASE REVERSAL", "Initiating Device"],
+    ["FIRE PUMP POWER FAIL", "Initiating Device"], ["FIRE PUMP TROUBLE", "Initiating Device"],
+    ["POWER SUPPLY IDF", "Initiating Device"], ["PREACTION TRIP LAB", "Programmable Relay"],
+    ["ELEV 1 MAIN RECALL", "Programmable Relay"], ["DAMPER AHU 1 SUPPLY", "Non-Programmable Relay"],
+    ["AHU 1 SHUTDOWN", "Programmable Relay"], ["AUTODOOR CLINIC ENTRANCE", "Programmable Relay"],
+    ["AMP 3 NORTH CH1", "Voice Evacuation"], ["PURGE MECH RM", "Programmable Relay"], ["STROBE PANEL 3 NORTH", "Initiating Device"]
+  ];
+  const produced = samples.map(([text, type]) => Parser.inferDeviceType(text, type));
+  assert.equal(new Set(produced).size, samples.length);
+  produced.forEach((value) => assert.ok(AI.KNOWN_DEVICE_TYPES.includes(value), value));
+});
+
+test("applies the house decisions for amplifiers, strobe panels, audio circuits, and purge relays", () => {
+  assert.equal(Parser.inferDeviceType("AMP 5 EAST CH1 - 6 EAST HOUSEKEEPING", "Voice Evacuation"), "Amplifier");
+  assert.equal(Parser.inferDeviceType("AA30 FINISH WHRS1", "Voice Evacuation"), "Amplifier");
+  assert.equal(Parser.inferDeviceType("AMP PANELS TROUBLE -5 EAST MECH ROOM", "Initiating Device"), "Initiating Device");
+  assert.equal(Parser.inferDeviceType("AMP ROOM HALL", "Smoke Detector"), "Smoke Detector");
+  assert.equal(Parser.inferDeviceType("STROBE PANEL 6 NORTH IN NURSERY", "Initiating Device"), "Programmable Relay");
+  assert.equal(Parser.inferDeviceType("OUTSIDE BELL BSMT EAST STROBE CONTROL", "Initiating Device"), "Programmable Relay");
+  assert.equal(Parser.inferDeviceType("STROBE PANEL TROUBLE 2 EAST", "Initiating Device"), "Initiating Device");
+  assert.equal(Parser.inferDeviceType("PURGE 5 EAST MECH RM FOR OR 2", "Programmable Relay"), "Fan Purge System");
+  assert.equal(Parser.inferDeviceType("FIRE CURTAIN STAGE", "Programmable Relay"), "Fire Curtain");
+  assert.deepEqual(Parser.matchDeviceTypeRule("AUDIO 1 EAST CKT 1-1 BY ELEV 2", "Initiating Device"), { value: "Initiating Device", matched: true });
+  assert.deepEqual(Parser.matchDeviceTypeRule("DOOR UNLOCK 2 EAST EXIT", "Programmable Relay"), { value: "Programmable Relay", matched: false });
+  assert.deepEqual(Parser.matchDeviceTypeRule("TAMPER STAIR B", "Initiating Device"), { value: "Tamper Switch", matched: true });
+});
+
+test("keeps detector hardware types away from relay function rules", () => {
+  assert.equal(Parser.inferDeviceType("SMOKE ELEV LOBBY RECALL", "Smoke Detector"), "Smoke Detector");
+  assert.equal(Parser.inferDeviceType("ELEV 4 LOBBY RECALL", "Smoke Detector"), "Smoke Detector");
+  assert.equal(Parser.inferDeviceType("DAMPER ROOM HALL", "Heat Detector"), "Heat Detector");
+  assert.equal(Parser.inferDeviceType("DUCT SMOKE ROOF AHU SUPPLY", "Smoke Detector"), "Duct Detector");
+});
+
 test("maps Pull Station to its known ModelNumber when the file has no stronger evidence", () => {
   const result = Parser.inferModelNumber("Pull Station", "Example", []);
   assert.equal(result.value, "SIGA-278");

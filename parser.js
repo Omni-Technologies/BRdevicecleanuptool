@@ -199,21 +199,60 @@
     return { value: "", rule: null, inferred: false };
   }
 
+  const GENERIC_INPUT_TYPES = new Set(["", "initiating device", "monitor device", "module", "alarm device", "supervisory device"]);
+  const RELAY_TYPES = new Set(["programmable relay", "non-programmable relay", "control relay", "relay"]);
+
+  // Each rule names the exported type classes it may correct: "input" (generic monitor modules),
+  // "relay" (relay outputs), "device" (every other exported type), or one exact exported type.
+  // A null value keeps the exported type as settled. A relay never becomes a detector.
   const DEVICE_TYPE_RULES = [
-    [/\bPULL(?:\s+STATION)?\b/i, "Pull Station"],
-    [/\bDUCT\b/i, "Duct Detector"],
-    [/\bSMOKE\b|\bSMK\b|\bSOMKE\b/i, "Smoke Detector"],
-    [/\bHEAT(?:\s+DETECTOR)?\b/i, "Heat Detector"],
-    [/\bWATER\s*FLOW\b|\bWATERFLOW\b/i, "Waterflow Switch"],
-    [/\b(?:PWR|POWER)\s+S(?:U)?P(?:P)?L(?:Y)?\b/i, "Power Supply"]
+    [/\bAUDIO\b/i, null, ["input"]],
+    [/^(?!.*\b(?:TROUBLE|TRBL|FAULT)\b).*\bSTROBE\s+(?:PANEL|CONTROL)S?\b/i, "Programmable Relay", ["input"]],
+    [/\bAMP(?:LIFIER)?S?\b|\bAA\d{2,3}\b/i, "Amplifier", ["voice evacuation"]],
+    [/\bPULL(?:\s+STATION)?\b/i, "Pull Station", ["input", "device"]],
+    [/\bBEAM\b/i, "Beam Detector", ["input", "relay"]],
+    [/\bDUCT\b/i, "Duct Detector", ["input", "device"]],
+    [/\bFIRE\s+CURTAINS?\b/i, "Fire Curtain", ["input", "relay"]],
+    [/\bSMOKE\s+CURTAINS?\b|\bROLL(?:ING)?[\s-]*(?:DOWN[\s-]*)?DOORS?\b|\bROLL[\s-]*DOWN\b/i, "Roll Down Door", ["input", "relay"]],
+    [/\bSMOKE\b|\bSMK\b|\bSOMKE\b/i, "Smoke Detector", ["input", "device"]],
+    [/\bHEAT(?:\s+DETECTOR)?\b/i, "Heat Detector", ["input", "device"]],
+    [/\b(?:WATE{1,2}R|WTR)[\s-]*(?:FLOWS?|LFOW|FOW)\b|\bFLOW\s+SW(?:ITCH)?\b/i, "Waterflow Switch", ["input", "device"]],
+    [/\bTAMPERS?\b|\bTAMP\b|\bPIV\b|\bOS\s*&\s*Y\b/i, "Tamper Switch", ["input", "device"]],
+    [/\b(?:LOW?|HI(?:GH)?)(?:\s*[/-]\s*(?:LOW?|HI(?:GH)?))?\s+AIR\b|\bAIR\s+PRESS(?:URE)?\b/i, "Air Pressure Switch", ["input", "device"]],
+    [/\bANSUL\b|\bKITCHEN\s+HOOD\b|\bHOOD\s+(?:SYSTEM|SUPP?RESSION)\b/i, "Kitchen Hood", ["input"]],
+    [/\bFIRE\s+PUMP\s+RUN(?:NING)?\b/i, "Fire Pump Running", ["input"]],
+    [/\bFIRE\s+PUMP\s+PHASE\s+REV(?:ERSAL)?\b/i, "Fire Pump Phase Reversal", ["input"]],
+    [/\bFIRE\s+PUMP\s+(?:POWER|PWR)\b/i, "Fire Pump Power", ["input"]],
+    [/\bFIRE\s+PUMP\s+(?:TROUBLE|TRBL)\b/i, "Fire Pump Trouble", ["input"]],
+    [/\b(?:PWR|POWER)\s+S(?:U)?P(?:P)?L(?:Y)?\b/i, "Power Supply", ["input", "device"]],
+    [/\bPRE[\s-]*ACTION\b/i, "Pre-Action System", ["input", "relay"]],
+    [/^(?=.*\bELEV(?:ATOR)?S?\b)(?=.*\b(?:RECALL|SHUNT|(?:FIRE\s*)?HAT)\b)/i, "Elevator", ["input", "relay"]],
+    [/\bDAMPERS?\b/i, "Damper Control", ["relay"]],
+    [/\bPURGE\b/i, "Fan Purge System", ["relay"]],
+    [/^(?=.*\b(?:AHUS?|RTUS?|MAU|CAU|ERU|HRU|EF|FANS?|EXHAUST|AIR\s+HANDL\w*)\b)(?=.*\bSHUT[\s-]*DO?WN\b)/i, "Fan Shutdown", ["relay"]],
+    [/\bAUTO[\s-]*DOORS?\b/i, "Releasing Device", ["relay"]]
   ];
 
-  function inferDeviceType(source, currentDeviceType) {
+  function deviceTypeClass(key) {
+    if (RELAY_TYPES.has(key)) return "relay";
+    return GENERIC_INPUT_TYPES.has(key) ? "input" : "device";
+  }
+
+  function matchDeviceTypeRule(source, currentDeviceType) {
     const text = normalizeForParsing(source);
-    for (const [pattern, value] of DEVICE_TYPE_RULES) {
-      if (pattern.test(text)) return value;
+    const current = String(currentDeviceType || "").trim();
+    const key = current.toLowerCase();
+    const typeClass = deviceTypeClass(key);
+    for (const [pattern, value, appliesTo] of DEVICE_TYPE_RULES) {
+      if ((appliesTo.includes(typeClass) || appliesTo.includes(key)) && pattern.test(text)) {
+        return { value: value || current, matched: true };
+      }
     }
-    return String(currentDeviceType || "").trim();
+    return { value: current, matched: false };
+  }
+
+  function inferDeviceType(source, currentDeviceType) {
+    return matchDeviceTypeRule(source, currentDeviceType).value;
   }
 
   const DEFAULT_MODEL_NUMBERS = new Map([
@@ -675,6 +714,7 @@
     extractFloor,
     extractDirection,
     inferDeviceType,
+    matchDeviceTypeRule,
     inferModelNumber,
     cleanDescription,
     inferFields,
