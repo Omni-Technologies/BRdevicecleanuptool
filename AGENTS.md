@@ -1,6 +1,6 @@
 # BR FieldSort agent handoff
 
-This file is the primary operating guide for Codex and other coding agents. Read it before changing the project. Then read the relevant files under `docs/`.
+This file is the primary operating guide for Codex and other coding agents. Read it before changing the project. Then read `STATUS.md` (current state, decisions, next task) and the relevant files under `docs/`.
 
 ## Product goal
 
