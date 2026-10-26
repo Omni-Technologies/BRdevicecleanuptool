@@ -2,7 +2,12 @@
   "use strict";
 
   const Parser = window.BRParser;
+  const AI = window.BRAI;
   const LEARNING_KEY = "br-fieldsort-corrections-v2";
+  const AI_KEY_STORAGE = "br-fieldsort-deepseek-key";
+  const AI_SETTINGS_KEY = "br-fieldsort-ai-settings-v1";
+  const AI_EXTRA_FIELDS = ["zone", "type"];
+  const AI_CONFIDENCE_SCORES = { high: 95, medium: 80, low: 45 };
   const TARGET_FIELDS = ["deviceType", "modelNumber", "floor", "direction", "location", "description"];
   const COMPACT_EMPTY_COLUMN_INDEXES = new Set([4, 13, 14, 15, 16]);
   const MIN_COLUMN_WIDTH = 48;
@@ -21,7 +26,10 @@
     compactEmptyColumns: true,
     emptyUtilityColumns: new Set(),
     columnWidths: new Map(),
-    learning: loadLearning()
+    learning: loadLearning(),
+    aiSettings: loadAiSettings(),
+    aiKey: loadAiKey(),
+    aiRun: null
   };
 
   const elements = {
@@ -42,6 +50,19 @@
     allFilterCount: document.querySelector("#allFilterCount"),
     reviewFilterCount: document.querySelector("#reviewFilterCount"),
     editedFilterCount: document.querySelector("#editedFilterCount"),
+    aiFilterCount: document.querySelector("#aiFilterCount"),
+    aiRunBtn: document.querySelector("#aiRunBtn"),
+    aiUndoBtn: document.querySelector("#aiUndoBtn"),
+    aiKey: document.querySelector("#aiKey"),
+    aiModel: document.querySelector("#aiModel"),
+    aiScope: document.querySelector("#aiScope"),
+    aiRemember: document.querySelector("#aiRemember"),
+    aiForgetBtn: document.querySelector("#aiForgetBtn"),
+    aiFieldList: document.querySelector("#aiFieldList"),
+    aiInstructions: document.querySelector("#aiInstructions"),
+    aiStatus: document.querySelector("#aiStatus"),
+    aiProgressBar: document.querySelector("#aiProgressBar"),
+    aiStatusText: document.querySelector("#aiStatusText"),
     csvGrid: document.querySelector("#csvGrid"),
     gridHead: document.querySelector("#gridHead"),
     reviewBody: document.querySelector("#reviewBody"),
@@ -85,6 +106,46 @@
     }
   }
 
+  function loadAiSettings() {
+    const defaults = {
+      model: AI.DEFAULT_MODEL,
+      fields: AI.FIELDS.filter((field) => field.defaultOn).map((field) => field.key),
+      instructions: "",
+      remember: true
+    };
+    try {
+      const value = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || "{}");
+      return value && typeof value === "object" ? { ...defaults, ...value } : defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
+  function saveAiSettings() {
+    try {
+      localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(state.aiSettings));
+    } catch {
+      showToast("The browser could not save AI settings.", true);
+    }
+  }
+
+  function loadAiKey() {
+    try {
+      return localStorage.getItem(AI_KEY_STORAGE) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function storeAiKey() {
+    try {
+      if (state.aiSettings.remember && state.aiKey) localStorage.setItem(AI_KEY_STORAGE, state.aiKey);
+      else localStorage.removeItem(AI_KEY_STORAGE);
+    } catch {
+      showToast("The browser could not save the API key.", true);
+    }
+  }
+
   function showToast(message, isError) {
     clearTimeout(toastTimer);
     elements.toast.textContent = message;
@@ -123,7 +184,10 @@
       areaSuite: ["AreaSuite", "Area/Suite", "Area Suite"],
       deviceType: ["DeviceType", "Device Type"],
       modelNumber: ["ModelNumber", "Model Number", "Model"],
-      manufacturer: ["Manufacturer", "Manufacture"]
+      manufacturer: ["Manufacturer", "Manufacture"],
+      zone: ["Zone"],
+      type: ["Type"],
+      scanNumber: ["ScanNumber", "Scan Number"]
     };
     const indexes = {};
     for (const [key, names] of Object.entries(aliases)) indexes[key] = Parser.findColumn(headers, names);
@@ -246,13 +310,25 @@
         edits: new Map(),
         manualColumns: new Set(),
         learned: Boolean(learned),
-        learningId: learnedId
+        learningId: learnedId,
+        ai: null,
+        ruleInferred: null,
+        aiExtras: new Map(),
+        autoValues: new Map()
       };
       return record;
     });
 
     Parser.applyContext(state.records);
     state.records.forEach((record) => { record.values = outputValues(record, state.fillMode); });
+
+    const scanIndex = state.indexes.scanNumber;
+    if (scanIndex >= 0) {
+      const placeholders = Parser.placeholderScanNumbers(state.records.map((record) => record.originalRow[scanIndex]));
+      placeholders.forEach((value, index) => {
+        if (value) state.records[index].autoValues.set(scanIndex, value);
+      });
+    }
   }
 
   function fieldForColumn(columnIndex) {
@@ -264,7 +340,20 @@
     const field = fieldForColumn(columnIndex);
     if (field) return record.values[field];
     if (record.edits.has(columnIndex)) return record.edits.get(columnIndex);
+    if (record.aiExtras.has(columnIndex)) return record.aiExtras.get(columnIndex);
+    if (record.autoValues.has(columnIndex)) return record.autoValues.get(columnIndex);
     return record.originalRow[columnIndex] || "";
+  }
+
+  function isAiCell(record, columnIndex) {
+    if (!record.ai || record.manualColumns.has(columnIndex)) return false;
+    const field = fieldForColumn(columnIndex);
+    if (field) {
+      return Object.prototype.hasOwnProperty.call(record.ai.values, field) &&
+        record.values[field] === record.inferred[field] &&
+        record.values[field] !== record.original[field];
+    }
+    return record.aiExtras.has(columnIndex);
   }
 
   function setCellValue(record, columnIndex, value, options) {
@@ -290,6 +379,11 @@
   }
 
   function needsReview(record) {
+    if (record.ai) {
+      const reviewed = TARGET_FIELDS.some((field) => record.manualColumns.has(state.indexes[field]));
+      if (record.ai.confidence === "low" && !reviewed) return true;
+      return !record.values.floor && !record.values.location && !record.values.direction && !record.values.description;
+    }
     if (!record.parseSource) return false;
     if (record.values.floor && (record.values.location || record.values.direction || record.inferred.classification)) {
       return false;
@@ -310,6 +404,7 @@
     try {
       const parsed = Parser.parseCsv(await file.text());
       const prepared = ensureTargetColumns(parsed);
+      cancelAiRun();
       state.file = file;
       state.headers = prepared.headers;
       state.rows = prepared.rows;
@@ -325,10 +420,17 @@
       });
       buildRecords();
       populateBulkColumns();
+      renderAiControls();
+      setAiStatus("");
       renderWorkspace();
       elements.importView.hidden = true;
       elements.workspaceView.hidden = false;
       window.scrollTo({ top: 0, behavior: "smooth" });
+      const placeholders = state.records.filter((record) => record.autoValues.has(state.indexes.scanNumber));
+      if (placeholders.length) {
+        const first = placeholders[0].autoValues.get(state.indexes.scanNumber);
+        showToast(`Filled ${placeholders.length.toLocaleString()} blank ScanNumbers with placeholders starting at ${first}.`);
+      }
     } catch (error) {
       showToast(error.message || "This file could not be read.", true);
     } finally {
@@ -349,6 +451,7 @@
     elements.allFilterCount.textContent = state.records.length.toLocaleString();
     elements.reviewFilterCount.textContent = review.toLocaleString();
     elements.editedFilterCount.textContent = edited.toLocaleString();
+    elements.aiFilterCount.textContent = state.records.filter((record) => record.ai).length.toLocaleString();
     updateSelectionSummary();
   }
 
@@ -357,6 +460,7 @@
     return state.records.filter((record) => {
       if (state.filter === "review" && !needsReview(record)) return false;
       if (state.filter === "edited" && !record.manualColumns.size) return false;
+      if (state.filter === "ai" && !record.ai) return false;
       if (!query) return true;
       return state.headers.some((header, columnIndex) =>
         String(getCellValue(record, columnIndex)).toLowerCase().includes(query)
@@ -611,6 +715,14 @@
     if (field && !record.manualColumns.has(columnIndex) && record.values[field] !== record.original[field]) {
       td.classList.add("suggested-cell");
     }
+    if (isAiCell(record, columnIndex)) {
+      td.classList.add("suggested-cell", "ai-cell");
+      if (record.ai.note) td.title = `AI note: ${record.ai.note}`;
+    }
+    if (!record.edits.has(columnIndex) && record.autoValues.has(columnIndex)) {
+      td.classList.add("suggested-cell");
+      td.title = "Placeholder ScanNumber. BuildingReports import does not allow a blank ScanNumber.";
+    }
 
     const input = document.createElement("input");
     input.className = "sheet-input";
@@ -675,6 +787,7 @@
     elements.fileSummary.textContent = `${state.file.name} · ${state.records.length.toLocaleString()} device records · all ${state.headers.length} columns visible`;
     updateStats();
     renderTable();
+    updateAiButtons();
   }
 
   function updateDuplicateRows(sourceRecord, field, value) {
@@ -756,15 +869,19 @@
     showToast(`Pasted ${changed.toLocaleString()} cells from the clipboard.`);
   }
 
-  function applyFillMode(mode) {
-    state.fillMode = mode;
+  function refreshAutomaticValues() {
     state.records.forEach((record) => {
-      const next = outputValues(record, mode);
+      const next = outputValues(record, state.fillMode);
       for (const field of TARGET_FIELDS) {
         if (!record.manualColumns.has(state.indexes[field])) record.values[field] = next[field];
       }
       if (record.manualColumns.has(state.indexes.deviceType)) syncModelForDeviceType(record);
     });
+  }
+
+  function applyFillMode(mode) {
+    state.fillMode = mode;
+    refreshAutomaticValues();
     renderWorkspace();
     showToast("Cleanup mode updated. Manual edits were kept.");
   }
@@ -839,6 +956,217 @@
     checkbox.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
   }
 
+  function aiFieldAvailable(key) {
+    return !AI_EXTRA_FIELDS.includes(key) || state.indexes[key] >= 0;
+  }
+
+  function renderAiControls() {
+    elements.aiModel.textContent = "";
+    const models = AI.MODELS.includes(state.aiSettings.model) ? AI.MODELS : [...AI.MODELS, state.aiSettings.model];
+    models.forEach((model) => {
+      const option = document.createElement("option");
+      option.value = model;
+      option.textContent = model === AI.DEFAULT_MODEL ? `${model} (fast, recommended)` : model;
+      option.selected = model === state.aiSettings.model;
+      elements.aiModel.appendChild(option);
+    });
+    elements.aiKey.value = state.aiKey;
+    elements.aiRemember.checked = state.aiSettings.remember;
+    elements.aiInstructions.value = state.aiSettings.instructions;
+    elements.aiFieldList.textContent = "";
+    AI.FIELDS.filter((field) => aiFieldAvailable(field.key)).forEach((field) => {
+      const label = document.createElement("label");
+      label.className = "ai-check";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = field.key;
+      input.checked = state.aiSettings.fields.includes(field.key);
+      const text = document.createElement("span");
+      text.textContent = field.label;
+      label.append(input, text);
+      elements.aiFieldList.appendChild(label);
+    });
+  }
+
+  function updateAiFields() {
+    const shown = Array.from(elements.aiFieldList.querySelectorAll("input"));
+    const hidden = state.aiSettings.fields.filter((key) => !shown.some((input) => input.value === key));
+    state.aiSettings.fields = [...hidden, ...shown.filter((input) => input.checked).map((input) => input.value)];
+    saveAiSettings();
+  }
+
+  function setAiStatus(message, percent, isError) {
+    elements.aiStatus.hidden = !message;
+    elements.aiStatusText.textContent = message || "";
+    elements.aiStatus.classList.toggle("is-error", Boolean(isError));
+    elements.aiProgressBar.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+  }
+
+  function updateAiButtons() {
+    const running = Boolean(state.aiRun);
+    elements.aiRunBtn.textContent = running ? "Cancel AI" : "Fill with AI";
+    elements.aiRunBtn.classList.toggle("is-running", running);
+    elements.aiStatus.classList.toggle("is-running", running);
+    elements.aiUndoBtn.hidden = running || !state.records.some((record) => record.ai);
+  }
+
+  function aiInputRow(record) {
+    const extra = (key) => (state.indexes[key] >= 0 ? record.originalRow[state.indexes[key]] || "" : "");
+    return {
+      index: record.index,
+      deviceType: record.original.deviceType,
+      manufacturer: record.original.manufacturer,
+      modelNumber: record.original.modelNumber,
+      description: record.original.description,
+      areaSuite: record.original.areaSuite,
+      floor: record.original.floor,
+      direction: record.original.direction,
+      location: record.original.location,
+      zone: extra("zone"),
+      type: extra("type")
+    };
+  }
+
+  function aiTargetRecords(scope) {
+    return state.records.filter((record) => {
+      if (record.learned) return false;
+      if (!String(record.original.areaSuite || record.original.description || "").trim()) return false;
+      if (scope === "review") return needsReview(record);
+      if (scope === "selected") return state.selected.has(record.index);
+      return true;
+    });
+  }
+
+  function applyAiSuggestions(entries) {
+    entries.forEach(([index, suggestion]) => {
+      const record = state.records[index];
+      if (!record) return;
+      if (!record.ruleInferred) record.ruleInferred = { ...record.inferred, reasons: record.inferred.reasons.slice() };
+      const inferred = { ...record.inferred, modelNumber: "", source: "ai" };
+      TARGET_FIELDS.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(suggestion.values, field)) return;
+        if (field === "description" && !suggestion.values.description) return;
+        inferred[field] = suggestion.values[field];
+      });
+      if (Object.prototype.hasOwnProperty.call(suggestion.values, "floor")) {
+        inferred.floorSource = suggestion.values.floor ? "ai" : "";
+      }
+      inferred.level = suggestion.confidence;
+      inferred.confidence = AI_CONFIDENCE_SCORES[suggestion.confidence];
+      inferred.reasons = [`AI ${suggestion.confidence} confidence`, ...(suggestion.note ? [suggestion.note] : [])];
+      record.inferred = inferred;
+      record.ai = record.ai
+        ? { ...suggestion, values: { ...record.ai.values, ...suggestion.values } }
+        : suggestion;
+      AI_EXTRA_FIELDS.forEach((key) => {
+        const columnIndex = state.indexes[key];
+        if (columnIndex < 0 || !Object.prototype.hasOwnProperty.call(suggestion.values, key)) return;
+        const value = suggestion.values[key];
+        if (value && !String(record.originalRow[columnIndex] || "").trim()) record.aiExtras.set(columnIndex, value);
+        else record.aiExtras.delete(columnIndex);
+      });
+    });
+    Parser.applyModelContext(state.records);
+    refreshAutomaticValues();
+  }
+
+  function undoAiSuggestions() {
+    let count = 0;
+    state.records.forEach((record) => {
+      if (!record.ruleInferred) return;
+      record.inferred = record.ruleInferred;
+      record.ruleInferred = null;
+      record.ai = null;
+      record.aiExtras.clear();
+      count += 1;
+    });
+    refreshAutomaticValues();
+    setAiStatus("");
+    renderWorkspace();
+    showToast(`Removed AI suggestions from ${count.toLocaleString()} rows. Manual edits were kept.`);
+  }
+
+  function cancelAiRun() {
+    if (state.aiRun) state.aiRun.controller.abort();
+  }
+
+  async function runAi() {
+    if (state.aiRun) {
+      cancelAiRun();
+      return;
+    }
+    state.aiKey = elements.aiKey.value.trim();
+    if (!state.aiKey) {
+      showToast("Paste a DeepSeek API key first.", true);
+      elements.aiKey.focus();
+      return;
+    }
+    if (!/^[\x21-\x7E]+$/.test(state.aiKey)) {
+      showToast("That API key contains spaces or unusual characters. Copy it again from DeepSeek.", true);
+      elements.aiKey.focus();
+      return;
+    }
+    storeAiKey();
+    const fields = state.aiSettings.fields.filter(aiFieldAvailable);
+    if (!fields.length) {
+      showToast("Choose at least one column for AI to fill.", true);
+      return;
+    }
+    const scope = elements.aiScope.value;
+    const targets = aiTargetRecords(scope);
+    if (!targets.length) {
+      showToast(scope === "selected" ? "Select one or more rows first." : "There are no rows for AI to fill.", true);
+      return;
+    }
+
+    const records = state.records;
+    const controller = new AbortController();
+    const received = [];
+    state.aiRun = { controller };
+    updateAiButtons();
+    setAiStatus("Reading the file's naming conventions…", 2);
+    let message = "";
+    let isError = false;
+    try {
+      const outcome = await AI.runAiFill({
+        apiKey: state.aiKey,
+        model: state.aiSettings.model,
+        fields,
+        instructions: state.aiSettings.instructions.trim(),
+        rows: targets.map(aiInputRow),
+        contextRows: records.map(aiInputRow),
+        signal: controller.signal,
+        onBatch: (entries) => received.push(...entries),
+        onProgress: (progress) => {
+          if (progress.phase !== "rows") return;
+          setAiStatus(
+            `Filling rows… ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} unique descriptions`,
+            5 + (95 * progress.done) / Math.max(progress.total, 1)
+          );
+        }
+      });
+      const tokens = `${Math.round(outcome.usage.promptTokens / 1000)}K tokens in, ${Math.round(outcome.usage.completionTokens / 1000)}K out`;
+      const failed = outcome.failedRows ? ` ${outcome.failedRows.toLocaleString()} rows got no answer and kept their rule-based values.` : "";
+      message = `AI filled ${received.length.toLocaleString()} rows from ${outcome.uniqueRows.toLocaleString()} unique descriptions (${tokens}).${failed}`;
+    } catch (error) {
+      isError = !controller.signal.aborted;
+      message = controller.signal.aborted ? "AI Assist was cancelled." : error.message || "AI Assist failed.";
+      if (received.length) message += ` Kept AI suggestions for ${received.length.toLocaleString()} rows.`;
+    } finally {
+      state.aiRun = null;
+    }
+    if (state.records !== records) {
+      updateAiButtons();
+      return;
+    }
+    if (received.length) applyAiSuggestions(received);
+    const flagged = received.filter(([, suggestion]) => suggestion.confidence === "low").length;
+    if (flagged) message += ` ${flagged.toLocaleString()} flagged for review.`;
+    setAiStatus(message, 100, isError);
+    renderWorkspace();
+    showToast(message, isError);
+  }
+
   function exportCsv() {
     try {
       const outputRows = state.records.map((record) =>
@@ -867,6 +1195,7 @@
   }
 
   function resetApp() {
+    cancelAiRun();
     elements.workspaceView.hidden = true;
     elements.importView.hidden = false;
     state.file = null;
@@ -960,6 +1289,32 @@
     state.columnWidths.clear();
     renderTable();
     showToast("Column widths reset to their automatic sizes.");
+  });
+  elements.aiRunBtn.addEventListener("click", runAi);
+  elements.aiUndoBtn.addEventListener("click", undoAiSuggestions);
+  elements.aiKey.addEventListener("change", () => {
+    state.aiKey = elements.aiKey.value.trim();
+    storeAiKey();
+  });
+  elements.aiRemember.addEventListener("change", () => {
+    state.aiSettings.remember = elements.aiRemember.checked;
+    saveAiSettings();
+    storeAiKey();
+  });
+  elements.aiForgetBtn.addEventListener("click", () => {
+    state.aiKey = "";
+    elements.aiKey.value = "";
+    storeAiKey();
+    showToast("The DeepSeek key was removed from this browser.");
+  });
+  elements.aiModel.addEventListener("change", () => {
+    state.aiSettings.model = elements.aiModel.value;
+    saveAiSettings();
+  });
+  elements.aiFieldList.addEventListener("change", updateAiFields);
+  elements.aiInstructions.addEventListener("change", () => {
+    state.aiSettings.instructions = elements.aiInstructions.value;
+    saveAiSettings();
   });
   window.addEventListener("blur", finishColumnResize);
 })();

@@ -18,7 +18,8 @@ This is a guide, not a commitment. Prefer changes backed by completed reference 
 
 ## Current limitations
 
-- The parser is deterministic and rule/context based; it does not call an AI model.
+- The parser is deterministic and rule/context based. AI Assist is optional and needs the user's DeepSeek key and an internet connection.
+- AI Assist output can vary slightly between runs and batches. The file conventions pass keeps it consistent, but reviewers should still scan the **AI filled** rows.
 - Learned corrections stay in one browser profile.
 - CSV is supported; native `.xlsx` files are not.
 - CSV serialization quotes every field and uses CRLF. Values are preserved, but byte-for-byte file formatting is not.
@@ -26,6 +27,8 @@ This is a guide, not a commitment. Prefer changes backed by completed reference 
 - Company-prefix cleanup currently recognizes the backslash-separated convention only.
 - Ambiguous device terms intentionally keep the existing DeviceType.
 
-## Before adding remote AI
+## AI Assist follow-ups
 
-Remote inference would change the privacy model. It requires explicit user approval, a clear data-retention policy, authentication, error handling, offline fallback, and updates to `SECURITY.md`.
+- Feed learned corrections to AI Assist as examples so it adopts a customer's house style.
+- Save the file conventions with an import profile, so repeat customers stay consistent across exports.
+- Show an estimated token count before a run.

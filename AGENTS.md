@@ -14,7 +14,7 @@ BR FieldSort turns inconsistent BuildingReports CSV exports into reviewable, imp
 - Do not silently discard text that might carry operational meaning.
 - Do not infer ambiguous values merely to reduce the Needs Review count.
 - Never commit or publish a real customer CSV.
-- Keep all CSV processing in the browser unless the user explicitly changes the architecture.
+- Keep all CSV processing in the browser unless the user explicitly changes the architecture. The one approved exception is AI Assist: only when the user clicks **Fill with AI**, `ai.js` sends the text columns listed in `SECURITY.md` straight from the browser to the DeepSeek API with the user's own key. Never send ScanNumber, SerialNumber, or Address, never add a backend or proxy, and never commit an API key.
 - Keep asset URLs relative so GitHub project Pages works at `/repository-name/`.
 
 `app.js:exportCsv()` performs the final AreaSuite and row-count guard. Do not weaken it.
@@ -24,7 +24,8 @@ BR FieldSort turns inconsistent BuildingReports CSV exports into reviewable, imp
 There is no framework and no build step.
 
 - `parser.js` is a UMD-style pure logic module. It works in the browser and through `require()` in Node tests.
-- `app.js` owns browser state, DOM rendering, editing, local learning, and export.
+- `ai.js` is a UMD-style module for AI Assist: prompt building, DeepSeek calls (injectable `fetch`), batching, retries, and strict validation of model output. It never touches the DOM.
+- `app.js` owns browser state, DOM rendering, editing, local learning, AI Assist orchestration, and export.
 - `index.html` defines accessible controls.
 - `styles.css` creates the responsive landing page and Excel-style grid.
 
@@ -35,6 +36,7 @@ Read `docs/ARCHITECTURE.md` before changing state flow or file handling. Read `d
 ```powershell
 node --test
 node --check parser.js
+node --check ai.js
 node --check app.js
 node scripts/serve.js
 ```
@@ -50,7 +52,14 @@ No dependency installation is needed.
 5. Add representative tests in `tests/parser.test.js`.
 6. Add or update the rule in `docs/DATA_RULES.md`.
 7. Run the full test suite.
-8. Check that a GitHub Pages artifact still needs only the four browser files.
+8. Check that a GitHub Pages artifact still needs only the five browser files (`index.html`, `styles.css`, `parser.js`, `ai.js`, `app.js`).
+
+## Changing AI Assist
+
+- Prompt wording and house-format rules live in `ai.js` (`FIELD_RULES`, `conventionsMessages`, `batchMessages`). Change them there, then re-run a sample against a real export and compare before and after.
+- Model output is untrusted. `parseBatchResponse` must keep rejecting unknown row ids, DeviceTypes outside the allowed list, and any Zone not literally stated in the source text. AreaSuite is never an output field.
+- AI results go into the `inferred` layer only. `record.ruleInferred` keeps the rule-based suggestion so **Undo AI suggestions** can restore it. Manual edits and learned corrections always win.
+- Tests in `tests/ai.test.js` use a mocked `fetch`; they must never call the real API.
 
 ## Browser state model
 
@@ -59,7 +68,11 @@ Each imported record in `app.js` keeps:
 - `originalRow`: untouched parsed row values.
 - `original`: original target values and AreaSuite.
 - `parseSource`: the more informative of AreaSuite and cleaned Description.
-- `inferred`: parser suggestions and confidence metadata.
+- `inferred`: parser suggestions and confidence metadata, replaced by AI suggestions after an AI Assist run.
+- `ruleInferred`: the rule-based `inferred` saved before AI replaced it, or `null`.
+- `ai`: the validated AI suggestion for the row (`values`, `confidence`, `note`), or `null`.
+- `aiExtras`: AI values for blank non-target columns such as Zone and Type, keyed by column index.
+- `autoValues`: rule-generated values for blank non-target columns, currently placeholder ScanNumbers, keyed by column index. `getCellValue` reads `edits`, then `aiExtras`, then `autoValues`, then the original value.
 - `values`: effective target values shown/exported.
 - `edits`: manual edits to non-target columns.
 - `manualColumns`: changed column indexes.
@@ -86,7 +99,7 @@ The Pages workflow intentionally copies an allowlist into `_site`. Do not replac
 ## Completion checklist
 
 - Tests pass.
-- `parser.js` and `app.js` pass `node --check`.
+- `parser.js`, `ai.js`, and `app.js` pass `node --check`.
 - No customer exports are tracked.
 - AreaSuite and row-count guards remain intact.
 - Documentation reflects new rules or architecture.

@@ -112,6 +112,25 @@ test("follows the completed example by leaving inferred Description blank", () =
   );
 });
 
+test("fills blank ScanNumbers with sequential placeholders matching the file's digit width", () => {
+  assert.deepEqual(
+    Parser.placeholderScanNumbers(["4893460453", "", "4893462228", "  ", "4893455688"]),
+    ["", "0000000001", "", "0000000002", ""]
+  );
+});
+
+test("placeholder ScanNumbers skip values already in the file", () => {
+  assert.deepEqual(
+    Parser.placeholderScanNumbers(["0000000001", "", "0000000003", "", "B6322107", "4895715483"]),
+    ["", "0000000002", "", "0000000004", "", ""]
+  );
+});
+
+test("placeholder ScanNumbers default to 10 digits and leave complete files alone", () => {
+  assert.deepEqual(Parser.placeholderScanNumbers(["", ""]), ["0000000001", "0000000002"]);
+  assert.deepEqual(Parser.placeholderScanNumbers(["4893460453", "4893462228"]), ["", ""]);
+});
+
 test("cleans conservative spelling mistakes without changing the source", () => {
   const source = "PWR SPLY COMPRES BLDG 2A DRY INGEDIENTS AERA";
   const result = Parser.inferFields(source, "Power Supply");

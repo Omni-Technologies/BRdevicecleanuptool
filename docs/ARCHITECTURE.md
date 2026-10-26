@@ -18,7 +18,13 @@ app.js: preserve original rows and build record state
    └── app.js: merge originals, suggestions, learning, and edits
    │
    ▼
-Excel-style browser grid
+Excel-style browser grid ◄──────────────┐
+   │                                     │
+   ├── optional: Fill with AI            │
+   │     ai.js: file conventions pass    │
+   │     ai.js: batched row fills ──► api.deepseek.com
+   │     ai.js: validate output          │
+   │     app.js: AI → inferred layer ────┘
    │
    ▼
 app.js: validate AreaSuite + row count
@@ -27,7 +33,7 @@ app.js: validate AreaSuite + row count
 parser.js: stringifyCsv → local download
 ```
 
-Nothing is sent to a server.
+Nothing is sent anywhere unless the user runs AI Assist. See `SECURITY.md` for exactly what it sends.
 
 ## Runtime files
 
@@ -52,6 +58,17 @@ Responsibilities:
 
 Keep this module free of DOM, File API, Blob, download, and localStorage behavior.
 
+### `ai.js`
+
+AI Assist logic, exposed as both `window.BRAI` and `module.exports`. It has no DOM or storage access, and `fetch` is injectable for tests.
+
+1. `buildFileProfile` summarizes the whole file: DeviceType counts, models by DeviceType, Description label values, existing Floor, Direction, and Type values, and AreaSuite samples.
+2. A conventions request asks the model for this file's site layout, floor notation, area spellings, abbreviation glossary, and one fixed Description wording per function keyword.
+3. Rows are de-duplicated on the columns sent, split into batches of 40, and sent six at a time. The shared system prompt comes first so DeepSeek's prefix cache covers it.
+4. `parseBatchResponse` validates every answer. A batch with missing rows is split and retried. 429 and 5xx responses back off and retry. A 401 or 402 stops the run.
+
+Requests use `deepseek-flash` by default, JSON output mode, `temperature: 0`, and `thinking: disabled`. Thinking mode was measured on a real export: about nine times slower and about eleven times the output tokens, and it still dropped rows.
+
 ### `app.js`
 
 Browser orchestration.
@@ -66,6 +83,7 @@ Responsibilities:
 - Search and review filters.
 - Direct editing, Excel paste, selection, and bulk editing.
 - Local correction learning.
+- AI Assist settings, key storage, run/cancel, applying and undoing AI suggestions.
 - Export validation and download.
 
 ### `index.html`
@@ -97,6 +115,8 @@ Each record retains three layers:
 3. Effective: values currently shown and exported after merge mode, learning, and edits.
 
 This separation is required for safe reset and export.
+
+An AI Assist run replaces a row's `inferred` layer with the validated AI suggestion. Fields the AI did not return keep their rule-based values. The previous rule-based layer is saved in `ruleInferred`. When AI changes DeviceType, `parser.js:applyModelContext` recomputes the ModelNumber suggestion from the file's evidence. AI never writes ModelNumber itself. AI values for blank Zone or Type cells live in `aiExtras`. The effective values are then rebuilt through the same `outputValues` merge as rule suggestions, so manual edits, learned corrections, and the cleanup mode still apply. Learned rows are never sent. **Undo AI suggestions** restores `ruleInferred` and clears `aiExtras`.
 
 ## Source selection
 
@@ -138,7 +158,7 @@ Only after validation does it generate the download.
 GitHub Pages serves relative assets from a project subpath. `.github/workflows/pages.yml`:
 
 1. Runs tests.
-2. Copies only runtime assets to `_site`.
+2. Copies only runtime assets (`index.html`, `styles.css`, `parser.js`, `ai.js`, `app.js`, `.nojekyll`) to `_site`.
 3. Uploads the Pages artifact.
 4. Deploys through the `github-pages` environment.
 

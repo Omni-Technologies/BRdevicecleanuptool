@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added optional AI Assist (DeepSeek `deepseek-flash`). It reads each AreaSuite and panel label in file context and fills Floor, Direction, Location, Zone, and DeviceType, plus optional Description and Type, as reviewable suggestions with confidence and notes. Includes an "AI filled" filter, undo, cancel, per-customer extra rules, and a key that can be remembered or forgotten.
+- Blank ScanNumbers get unique sequential placeholders at import, matching the file's digit width (`0000000001`, …), because BuildingReports import rejects blanks.
+- AI output is validated in code: unknown rows and fields are rejected, DeviceType is limited to allowed values, and Zone is accepted only when literally stated in the source.
+
 - Added context-aware ModelNumber inference from correct same-file DeviceType and manufacturer matches.
 - Added the explicit `Pull Station → SIGA-278` fallback while suppressing it when file evidence conflicts.
 - Kept ModelNumber synchronized after direct, pasted, or bulk DeviceType edits.

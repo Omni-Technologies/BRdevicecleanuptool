@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "test": "node --test",
-    "check": "node --check parser.js && node --check app.js && node --test"
+    "check": "node --check parser.js && node --check ai.js && node --check app.js && node --test"
   },
   "engines": {
     "node": ">=18"

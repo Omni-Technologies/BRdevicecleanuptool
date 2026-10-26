@@ -548,6 +548,30 @@
     };
   }
 
+  function placeholderScanNumbers(values) {
+    const existing = values.map((value) => normalizeForParsing(value));
+    const taken = new Set(existing.filter(Boolean).map((value) => value.toUpperCase()));
+    const lengths = new Map();
+    existing.forEach((value) => {
+      if (/^\d+$/.test(value)) lengths.set(value.length, (lengths.get(value.length) || 0) + 1);
+    });
+    const width = lengths.size
+      ? Array.from(lengths.entries()).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
+      : 10;
+    let next = 1;
+    return existing.map((value) => {
+      if (value) return "";
+      let candidate = String(next).padStart(width, "0");
+      while (taken.has(candidate)) {
+        next += 1;
+        candidate = String(next).padStart(width, "0");
+      }
+      next += 1;
+      taken.add(candidate);
+      return candidate;
+    });
+  }
+
   function contextTokens(value) {
     const stopWords = new Set([
       "amp", "area", "at", "audio", "building", "by", "ch", "door", "duct",
@@ -656,6 +680,7 @@
     inferFields,
     applyModelContext,
     applyContext,
+    placeholderScanNumbers,
     cleanupSpelling,
     titleCaseField
   };

@@ -109,6 +109,27 @@ Text-similarity context requires:
 
 Context suggestions remain medium confidence.
 
+## ScanNumber placeholders
+
+BuildingReports import rejects a blank ScanNumber. At import, every blank or whitespace-only ScanNumber gets a sequential placeholder: `0000000001`, `0000000002`, and so on, in row order.
+
+- The width matches the most common digit length among the file's numeric ScanNumbers, which is 10 in current exports. It falls back to 10 when the file has none.
+- A placeholder never repeats a ScanNumber already in the file. Taken values are skipped.
+- Existing ScanNumbers are never changed. Placeholders show as suggested cells, can be edited like any cell, and are exported.
+
+## AI Assist rules
+
+AI Assist follows the same house format as the rules above. The full prompt wording is `FIELD_RULES` in `ai.js`.
+
+- **Floor:** `1st Floor` … `12th Floor`, Basement, Lower Level, Ground Floor, Mezzanine, Penthouse, Roof, or parking `2P`. A bare number before a wing or building name (`4 CENTER`, `7 TOWER`) is the floor. A bare `3` returned by the model is normalized to `3rd Floor`.
+- **Direction:** the wing, building, tower, or compass area, spelled one way across the file. The file conventions pass fixes the spellings.
+- **Location:** the specific place, in Title Case with every word capitalized. Device words and the floor and area already used are removed, and shorthand is expanded (RM, MECH, ELEV, EQUIP, ELEC, BSMT, PENT). Room numbers, stair letters, elevator numbers, and equipment tags are kept exactly as written. Uncertain abbreviations are left as written.
+- **DeviceType:** the exported value is kept unless the text clearly names a device. The mapping matches the parser: PULL, DUCT, SMOKE, HEAT, WATERFLOW, POWER SUPPLY. Only types already in the file, plus those six targets, are accepted. ModelNumber then follows the existing ModelNumber inference.
+- **Zone:** filled only when the zone is literally stated, as in `Z15` or `ZONE 15` in AreaSuite or Description, and only into a blank Zone cell. Leading address numbers such as `13 PULL DOOR 17` are rejected in code even if the model returns them.
+- **Description:** off by default. The completed reference export keeps Description as the cleaned original. When enabled, it becomes a short device-function statement such as `Damper Relay` or `Duct Detector - AHU 5N1 Supply`, with one wording per function keyword.
+- **Type:** off by default. Filled only when the text states it explicitly.
+- **Confidence:** each row gets high, medium, or low. Low rows and rows with no extracted Floor, Direction, Location, or Description count as Needs Review. A short AI note appears in the cell tooltip.
+
 ## Review policy
 
 A row needs review when useful source exists and:

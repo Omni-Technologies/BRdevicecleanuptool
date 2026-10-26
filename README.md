@@ -2,11 +2,23 @@
 
 BR FieldSort is a local-first cleanup tool for BuildingReports CSV exports. Users drop a CSV into the browser, review contextual suggestions in an Excel-style grid, bulk-edit when needed, and download a cleaned CSV.
 
-The application is a static website with no backend, account, database, build step, or runtime dependency. CSV contents never leave the browser.
+The application is a static website with no backend, account, database, build step, or runtime dependency. CSV contents stay in the browser unless the user runs the optional AI Assist.
+
+## AI Assist
+
+AI Assist uses DeepSeek to read every tech description in the context of the whole file. It fills Floor, Direction, Location, Zone, and Device Type, plus Description and Type if those are enabled. On a 2,176-row hospital export the rule parser found a floor for 232 rows; AI Assist filled 2,084 in about a minute.
+
+1. Import a CSV.
+2. Paste a DeepSeek API key into **AI Assist** (from platform.deepseek.com).
+3. Choose the rows (all, needs review, or selected) and the columns AI may fill.
+4. Click **Fill with AI**, review the blue AI cells (the **AI filled** filter lists them), then export.
+
+AI suggestions never override manual edits or learned corrections, and AreaSuite stays locked. **Undo AI suggestions** restores the rule-based values. See [SECURITY.md](SECURITY.md) for exactly what is sent.
 
 ## Current capabilities
 
 - Preserves every original CSV row, column, and `AreaSuite` value.
+- Fills blank ScanNumbers with unique sequential placeholders (`0000000001`, …) because BuildingReports import rejects blanks.
 - Corrects strongly identified Device Types, including Pull Station, Duct Detector, Smoke Detector, Heat Detector, Waterflow Switch, and Power Supply.
 - Keeps ModelNumber aligned with DeviceType by learning from correct rows in the same file; Pull Station falls back to `SIGA-278` when no stronger file evidence exists.
 - Extracts numbered floors, Lower Level, Penthouse, Mezzanine, Roof, Basement, Ground Floor, and parking levels.
@@ -30,6 +42,7 @@ The GitHub Pages workflow publishes only:
 - `index.html`
 - `styles.css`
 - `parser.js`
+- `ai.js`
 - `app.js`
 - `.nojekyll`
 
@@ -85,7 +98,8 @@ Every later push to `main` runs the tests and republishes the site. The workflow
 | `index.html` | Application structure and controls |
 | `styles.css` | Responsive visual design and spreadsheet grid |
 | `parser.js` | Pure CSV parsing, inference, cleanup, and context rules |
-| `app.js` | Browser state, file workflow, editing, learning, and export |
+| `ai.js` | AI Assist prompts, DeepSeek requests, batching, and output validation |
+| `app.js` | Browser state, file workflow, editing, learning, AI Assist, and export |
 | `tests/` | Node tests and sanitized fixture |
 | `scripts/serve.js` | Restricted local static server |
 | `.github/workflows/pages.yml` | Test and GitHub Pages deployment |

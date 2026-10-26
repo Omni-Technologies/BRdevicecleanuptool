@@ -16,7 +16,7 @@
       </a>
       <div class="privacy-pill">
         <span class="privacy-dot"></span>
-        Runs locally in your browser
+        Runs locally · AI optional
       </div>
     </header>
 
@@ -37,7 +37,7 @@
             <h2>Drop your export here</h2>
             <p>or choose a file from your computer</p>
             <button id="browseBtn" class="button button-primary" type="button">Choose CSV file</button>
-            <small>Nothing is uploaded. Your data stays on this device.</small>
+            <small>Nothing is uploaded unless you choose to run AI Assist.</small>
           </div>
           <div class="feature-strip">
             <div>
@@ -119,12 +119,65 @@
           </div>
         </div>
 
+        <section class="ai-panel" aria-labelledby="aiTitle">
+          <div class="ai-panel-head">
+            <div>
+              <div class="eyebrow">AI ASSIST · DEEPSEEK</div>
+              <h2 id="aiTitle">Let AI read every tech description.</h2>
+              <p>Reads each AreaSuite and panel label in the context of the whole file, then fills the columns below as reviewable suggestions. Manual edits and learned corrections are kept, and AreaSuite stays locked.</p>
+            </div>
+            <div class="ai-run">
+              <button id="aiRunBtn" class="button button-primary" type="button">Fill with AI</button>
+              <button id="aiUndoBtn" class="text-button" type="button" hidden>Undo AI suggestions</button>
+            </div>
+          </div>
+          <div class="ai-settings">
+            <label class="ai-key-field">
+              <span>DeepSeek API key</span>
+              <input id="aiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+            </label>
+            <label>
+              <span>Model</span>
+              <select id="aiModel"></select>
+            </label>
+            <label>
+              <span>Rows</span>
+              <select id="aiScope">
+                <option value="all">All rows</option>
+                <option value="review">Needs review only</option>
+                <option value="selected">Selected rows</option>
+              </select>
+            </label>
+            <div class="ai-key-options">
+              <label class="ai-check">
+                <input id="aiRemember" type="checkbox" checked>
+                <span>Remember key on this device</span>
+              </label>
+              <button id="aiForgetBtn" class="text-button" type="button">Forget key</button>
+            </div>
+          </div>
+          <fieldset class="ai-fields">
+            <legend>Columns AI may fill</legend>
+            <div id="aiFieldList" class="ai-field-list"></div>
+          </fieldset>
+          <label class="ai-instructions">
+            <span>Extra rules for this customer (optional)</span>
+            <textarea id="aiInstructions" rows="2" placeholder="Example: use the building number for Direction; leave Description blank for spare inputs."></textarea>
+          </label>
+          <div id="aiStatus" class="ai-status" hidden>
+            <div class="ai-progress" aria-hidden="true"><span id="aiProgressBar"></span></div>
+            <p id="aiStatusText" role="status" aria-live="polite"></p>
+          </div>
+          <small class="ai-privacy">Clicking Fill with AI sends DeviceType, Manufacturer, ModelNumber, Description, AreaSuite, and the existing Floor, Direction, Location, Zone, and Type text to api.deepseek.com. ScanNumber, SerialNumber, and Address are never sent. The key is used only for DeepSeek requests and is stored only in this browser when you choose to remember it.</small>
+        </section>
+
         <div class="review-panel">
           <div class="review-toolbar">
             <div class="filter-group" role="group" aria-label="Filter rows">
               <button class="filter-button is-active" data-filter="all" type="button">All <span id="allFilterCount">0</span></button>
               <button class="filter-button" data-filter="review" type="button">Needs review <span id="reviewFilterCount">0</span></button>
               <button class="filter-button" data-filter="edited" type="button">Edited <span id="editedFilterCount">0</span></button>
+              <button class="filter-button" data-filter="ai" type="button">AI filled <span id="aiFilterCount">0</span></button>
             </div>
             <div class="review-actions">
               <button id="compactEmptyBtn" class="compact-columns-button" type="button" aria-pressed="true">
@@ -193,6 +246,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="parser.js"></script>
+  <script src="ai.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
